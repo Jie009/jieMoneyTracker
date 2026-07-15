@@ -116,10 +116,20 @@ object LegacyMoneyManagerXlsxReader {
             .newInstance()
             .apply {
                 isNamespaceAware = false
-                setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
+                setFeatureIfSupported("http://apache.org/xml/features/disallow-doctype-decl", true)
+                setFeatureIfSupported("http://xml.org/sax/features/external-general-entities", false)
+                setFeatureIfSupported("http://xml.org/sax/features/external-parameter-entities", false)
+                setFeatureIfSupported("http://apache.org/xml/features/nonvalidating/load-external-dtd", false)
+                runCatching { isExpandEntityReferences = false }
             }
             .newDocumentBuilder()
             .parse(bytes.inputStream())
+
+    private fun DocumentBuilderFactory.setFeatureIfSupported(feature: String, value: Boolean) {
+        runCatching {
+            setFeature(feature, value)
+        }
+    }
 
     private fun Element.elementsByTagName(name: String): List<Element> {
         val nodes = getElementsByTagName(name)

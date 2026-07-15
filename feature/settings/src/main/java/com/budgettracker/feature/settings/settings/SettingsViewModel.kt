@@ -83,7 +83,7 @@ class SettingsViewModel @Inject constructor(
                     onFailure = { error ->
                         state.copy(
                             isBusy = false,
-                            message = error.message ?: "Import preview failed.",
+                            message = error.toImportMessage(),
                         )
                     },
                 )
@@ -229,6 +229,16 @@ class SettingsViewModel @Inject constructor(
 
     private fun ByteArray.isXlsx(): Boolean =
         size >= 4 && this[0] == 0x50.toByte() && this[1] == 0x4B.toByte()
+
+    private fun Throwable.toImportMessage(): String {
+        val rawMessage = message.orEmpty()
+        if (rawMessage.startsWith("http://") || rawMessage.startsWith("https://")) {
+            return "Import preview failed. Please check that the file is a valid CSV or XLSX export."
+        }
+        return rawMessage.ifBlank {
+            "Import preview failed. Please check that the file is a valid CSV or XLSX export."
+        }
+    }
 
     private fun Transaction.duplicateKey(cashbookId: String): LegacyImportDuplicateKey =
         LegacyImportDuplicateKey(
