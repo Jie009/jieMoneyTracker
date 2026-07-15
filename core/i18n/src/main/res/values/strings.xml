@@ -1,0 +1,4 @@
+<resources>
+    <string name="core_i18n_language_english">English</string>
+    <string name="core_i18n_language_chinese">Chinese</string>
+</resources>

@@ -1,0 +1,2015 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Budget Tracker Android UI Mock</title>
+  <style>
+    @import url("https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500;600;700;800&family=Source+Sans+3:wght@400;500;600;700&display=swap");
+
+    :root {
+      color-scheme: dark;
+      --bg: #050b18;
+      --phone: #0b1224;
+      --surface: rgba(16, 26, 52, 0.88);
+      --surface-2: rgba(20, 32, 61, 0.94);
+      --surface-3: rgba(30, 46, 82, 0.9);
+      --surface-soft: rgba(255, 255, 255, 0.055);
+      --primary: #3b82f6;
+      --primary-strong: #1e40af;
+      --primary-soft: rgba(59, 130, 246, 0.16);
+      --accent: #059669;
+      --accent-soft: rgba(5, 150, 105, 0.16);
+      --expense: #f87171;
+      --income: #22c55e;
+      --warning: #f59e0b;
+      --text: #ffffff;
+      --text-soft: #d6e2f2;
+      --text-muted: #91a7c5;
+      --border: rgba(255, 255, 255, 0.1);
+      --border-strong: rgba(147, 197, 253, 0.22);
+      --shadow: 0 28px 90px rgba(0, 0, 0, 0.48);
+      --shadow-card: 0 14px 36px rgba(0, 0, 0, 0.24);
+      --ring: 0 0 0 3px rgba(59, 130, 246, 0.32);
+      --radius-xl: 28px;
+      --radius-lg: 22px;
+      --radius-md: 16px;
+      --radius-sm: 12px;
+      --tap: 48px;
+      font-family: Lexend, "Source Sans 3", Roboto, "Noto Sans SC", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at 18% 8%, rgba(59, 130, 246, 0.25), transparent 28rem),
+        radial-gradient(circle at 82% 88%, rgba(5, 150, 105, 0.18), transparent 30rem),
+        linear-gradient(135deg, rgba(255, 255, 255, 0.04), transparent 36rem),
+        var(--bg);
+      color: var(--text);
+      -webkit-font-smoothing: antialiased;
+      text-rendering: geometricPrecision;
+    }
+
+    button,
+    input {
+      font: inherit;
+    }
+
+    button {
+      border: 0;
+      cursor: pointer;
+    }
+
+    button:focus-visible {
+      outline: 0;
+      box-shadow: var(--ring);
+    }
+
+    .phone {
+      font-size: 12px;
+    }
+
+    .phone button {
+      font-size: 12px;
+    }
+
+    .page {
+      width: min(1280px, 100%);
+      margin: 0 auto;
+      padding: 32px;
+      display: grid;
+      grid-template-columns: minmax(280px, 0.9fr) minmax(393px, 1fr);
+      gap: 32px;
+      align-items: center;
+    }
+
+    .brief {
+      display: grid;
+      gap: 20px;
+      align-content: center;
+    }
+
+    .eyebrow {
+      width: fit-content;
+      padding: 8px 12px;
+      border: 1px solid var(--border-strong);
+      border-radius: 999px;
+      color: #bfdbfe;
+      background: var(--primary-soft);
+      font-size: 13px;
+      letter-spacing: 0.02em;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(34px, 6vw, 64px);
+      line-height: 0.95;
+      letter-spacing: -0.05em;
+    }
+
+    .brief p {
+      max-width: 600px;
+      margin: 0;
+      color: var(--text-soft);
+      font-size: 17px;
+      line-height: 1.7;
+    }
+
+    .stage {
+      display: grid;
+      place-items: center;
+      min-width: 0;
+    }
+
+    .phone {
+      width: 393px;
+      height: 852px;
+      position: relative;
+      overflow: hidden;
+      border: 10px solid #020617;
+      border-radius: 44px;
+      background:
+        radial-gradient(circle at 50% -4%, rgba(59, 130, 246, 0.18), transparent 18rem),
+        linear-gradient(180deg, #101a34 0%, var(--phone) 42%, #081120 100%);
+      box-shadow: var(--shadow);
+    }
+
+    .phone::before {
+      content: "";
+      position: absolute;
+      z-index: 10;
+      top: 10px;
+      left: 50%;
+      width: 96px;
+      height: 24px;
+      transform: translateX(-50%);
+      border-radius: 999px;
+      background: #020617;
+    }
+
+    .status-bar,
+    .gesture-bar {
+      position: absolute;
+      z-index: 9;
+      left: 0;
+      right: 0;
+      pointer-events: none;
+    }
+
+    .status-bar {
+      top: 0;
+      height: 36px;
+      padding: 10px 22px 0;
+      display: flex;
+      justify-content: space-between;
+      color: var(--text-soft);
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .gesture-bar {
+      bottom: 0;
+      height: 28px;
+      display: grid;
+      place-items: center;
+      background: linear-gradient(transparent, rgba(2, 6, 23, 0.7));
+    }
+
+    .gesture-bar span {
+      width: 108px;
+      height: 4px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.48);
+    }
+
+    .screen {
+      position: absolute;
+      inset: 0;
+      display: none;
+      padding: 44px 16px 104px;
+      overflow-y: auto;
+      scrollbar-width: none;
+      background:
+        radial-gradient(circle at 82% 0%, rgba(59, 130, 246, 0.12), transparent 13rem),
+        linear-gradient(180deg, rgba(255, 255, 255, 0.025), transparent 10rem);
+    }
+
+    .screen::-webkit-scrollbar {
+      display: none;
+    }
+
+    .screen.active {
+      display: block;
+      animation: fadeIn 180ms ease-out;
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(8px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .top-bar {
+      min-height: var(--tap);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .title-wrap {
+      min-width: 0;
+    }
+
+    .title-wrap.center {
+      flex: 1;
+      text-align: center;
+    }
+
+    .title-wrap small {
+      display: block;
+      color: var(--text-muted);
+      font-size: 10px;
+      font-weight: 700;
+    }
+
+    .title-wrap h2 {
+      margin: 3px 0 0;
+      font-size: 19px;
+      font-weight: 700;
+      letter-spacing: -0.035em;
+    }
+
+    .icon-btn {
+      width: 44px;
+      height: 44px;
+      display: inline-grid;
+      place-items: center;
+      flex: 0 0 auto;
+      border-radius: 16px;
+      color: var(--text);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.18);
+      transition: transform 180ms ease, background 180ms ease, border-color 180ms ease;
+    }
+
+    .icon-btn.active {
+      color: var(--text);
+      border-color: rgba(96, 165, 250, 0.55);
+      background: linear-gradient(135deg, rgba(59, 130, 246, 0.32), rgba(5, 150, 105, 0.14));
+    }
+
+    .top-actions {
+      display: flex;
+      gap: 4px;
+    }
+
+    .icon-btn:active,
+    .pill:active,
+    .bottom-tab:active,
+    .key:active,
+    .category:active,
+    .field:active,
+    .action-btn:active,
+    .drawer-item:active,
+    .category-option:active,
+    .icon-choice:active {
+      transform: scale(0.97);
+    }
+
+    svg {
+      width: 22px;
+      height: 22px;
+      stroke: currentColor;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      fill: none;
+    }
+
+    .cashbook {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      min-height: 52px;
+      padding: 8px 12px 8px 14px;
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-lg);
+      background: linear-gradient(135deg, var(--primary-soft), var(--accent-soft));
+    }
+
+    .cashbook strong,
+    .cashbook span {
+      display: block;
+    }
+
+    .cashbook span {
+      color: var(--text-muted);
+      font-size: 12px;
+    }
+
+    .home-period {
+      display: grid;
+      grid-template-columns: 74px repeat(3, 1fr);
+      gap: 8px;
+      align-items: end;
+      padding: 4px 4px 14px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .period-cell {
+      min-width: 0;
+    }
+
+    .period-cell span,
+    .period-cell button {
+      display: block;
+      color: var(--text-muted);
+      font-size: 11px;
+      font-weight: 750;
+      text-align: left;
+      background: transparent;
+    }
+
+    .period-cell strong {
+      display: block;
+      margin-top: 7px;
+      color: var(--text-soft);
+      font-size: 15px;
+      font-weight: 650;
+      letter-spacing: -0.02em;
+      white-space: nowrap;
+    }
+
+    .period-cell.month button {
+      min-height: 42px;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      color: var(--text);
+      font-size: 22px;
+      font-weight: 500;
+    }
+
+    .period-cell.month svg {
+      width: 16px;
+      height: 16px;
+    }
+
+    .summary-card {
+      margin-top: 14px;
+      padding: 16px;
+      border-radius: var(--radius-lg);
+      background:
+        radial-gradient(circle at 86% 0%, rgba(96, 165, 250, 0.34), transparent 10rem),
+        radial-gradient(circle at 8% 100%, rgba(5, 150, 105, 0.22), transparent 10rem),
+        linear-gradient(135deg, rgba(30, 64, 175, 0.8), rgba(15, 23, 42, 0.88));
+      border: 1px solid var(--border-strong);
+      box-shadow: var(--shadow-card);
+    }
+
+    .summary-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      color: var(--text-soft);
+      font-size: 11px;
+    }
+
+    .balance {
+      margin: 10px 0;
+      font-size: 30px;
+      font-weight: 850;
+      letter-spacing: -0.06em;
+    }
+
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+    }
+
+    .metric {
+      padding: 10px;
+      border-radius: 16px;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .metric span {
+      display: block;
+      color: var(--text-muted);
+      font-size: 11px;
+    }
+
+    .metric strong {
+      display: block;
+      margin-top: 4px;
+      font-size: 14px;
+    }
+
+    .section-title {
+      margin: 18px 2px 10px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .section-title h3 {
+      margin: 0;
+      font-size: 15px;
+      letter-spacing: -0.02em;
+    }
+
+    .section-title button,
+    .link {
+      min-height: 40px;
+      padding: 0 10px;
+      border-radius: 999px;
+      color: #bfdbfe;
+      background: rgba(59, 130, 246, 0.08);
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .transaction-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .day-label {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      color: var(--text-muted);
+      font-size: 10px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .day-label strong {
+      color: var(--text-muted);
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0;
+      text-transform: none;
+    }
+
+    .transaction {
+      min-height: 62px;
+      padding: 9px 11px;
+      display: grid;
+      grid-template-columns: 40px 1fr auto;
+      gap: 10px;
+      align-items: center;
+      border-radius: 16px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      box-shadow: 0 9px 22px rgba(0, 0, 0, 0.14);
+    }
+
+    .category-mark {
+      width: 40px;
+      height: 40px;
+      display: grid;
+      place-items: center;
+      border-radius: 14px;
+      color: #bfdbfe;
+      background: linear-gradient(135deg, rgba(59, 130, 246, 0.18), rgba(5, 150, 105, 0.08));
+      border: 1px solid rgba(147, 197, 253, 0.12);
+    }
+
+    .transaction strong {
+      font-size: 13px;
+    }
+
+    .transaction strong,
+    .transaction span {
+      display: block;
+    }
+
+    .transaction.no-note strong {
+      display: flex;
+      align-items: center;
+      min-height: 40px;
+    }
+
+    .transaction span {
+      margin-top: 3px;
+      color: var(--text-muted);
+      font-size: 10px;
+    }
+
+    .amount {
+      font-weight: 850;
+      white-space: nowrap;
+      font-size: 15px;
+    }
+
+    .amount.expense {
+      color: var(--expense);
+    }
+
+    .amount.income {
+      color: #86efac;
+    }
+
+    .fab {
+      position: absolute;
+      right: 22px;
+      bottom: 104px;
+      z-index: 8;
+      width: 60px;
+      height: 60px;
+      display: grid;
+      place-items: center;
+      border-radius: 22px;
+      color: var(--text);
+      background: linear-gradient(135deg, var(--primary), var(--accent));
+      box-shadow: 0 18px 38px rgba(59, 130, 246, 0.34), 0 8px 18px rgba(5, 150, 105, 0.22);
+    }
+
+    .bottom-nav {
+      position: absolute;
+      left: 14px;
+      right: 14px;
+      bottom: 28px;
+      z-index: 8;
+      height: 68px;
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 5px;
+      padding: 7px;
+      border: 1px solid var(--border-strong);
+      border-radius: 26px;
+      background: rgba(13, 23, 45, 0.9);
+      backdrop-filter: blur(18px);
+      box-shadow: 0 -12px 36px rgba(0, 0, 0, 0.26);
+    }
+
+    .bottom-tab {
+      min-width: 0;
+      min-height: 50px;
+      display: grid;
+      place-items: center;
+      gap: 2px;
+      border-radius: 18px;
+      color: var(--text-muted);
+      background: transparent;
+      font-size: 8.5px;
+      font-weight: 800;
+      transition: background 180ms ease, color 180ms ease, transform 180ms ease;
+    }
+
+    .bottom-tab svg {
+      width: 19px;
+      height: 19px;
+    }
+
+    .bottom-tab.active {
+      color: #eff6ff;
+      background: linear-gradient(135deg, rgba(59, 130, 246, 0.28), rgba(5, 150, 105, 0.12));
+      box-shadow: inset 0 0 0 1px rgba(147, 197, 253, 0.14);
+    }
+
+    .segmented,
+    .chips {
+      display: flex;
+      gap: 8px;
+      padding: 5px;
+      border-radius: 18px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.14);
+    }
+
+    .pill {
+      min-height: 42px;
+      flex: 1;
+      padding: 0 12px;
+      border-radius: 14px;
+      color: var(--text-muted);
+      background: transparent;
+      font-size: 12px;
+      font-weight: 800;
+      transition: background 180ms ease, color 180ms ease, transform 180ms ease;
+    }
+
+    .pill.active {
+      color: var(--text);
+      background: linear-gradient(135deg, var(--primary), var(--primary-strong));
+      box-shadow: 0 8px 18px rgba(59, 130, 246, 0.24);
+    }
+
+    .amount-panel {
+      min-height: 112px;
+      margin: 20px 0 0;
+      padding: 22px 12px;
+      display: grid;
+      place-content: center;
+      text-align: center;
+      background:
+        radial-gradient(circle at 50% 0%, rgba(59, 130, 246, 0.22), transparent 11rem),
+        var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-xl);
+      box-shadow: var(--shadow-card);
+    }
+
+    .amount-panel span {
+      display: block;
+      margin-bottom: 8px;
+      color: var(--text-muted);
+      font-size: 14px;
+      font-weight: 500;
+    }
+
+    .amount-panel strong {
+      display: block;
+      font-size: 42px;
+      line-height: 1;
+      letter-spacing: -0.06em;
+    }
+
+    .category-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+    }
+
+    .category {
+      min-height: 68px;
+      display: grid;
+      place-items: center;
+      gap: 5px;
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      color: var(--text-soft);
+      background: var(--surface);
+      font-size: 9.5px;
+      font-weight: 800;
+      box-shadow: 0 8px 18px rgba(0, 0, 0, 0.12);
+      transition: transform 180ms ease, border-color 180ms ease, background 180ms ease, color 180ms ease;
+    }
+
+    .category svg {
+      width: 20px;
+      height: 20px;
+    }
+
+    .category.active {
+      color: var(--text);
+      border-color: rgba(96, 165, 250, 0.55);
+      background: linear-gradient(135deg, rgba(59, 130, 246, 0.26), rgba(5, 150, 105, 0.12));
+    }
+
+    .category-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .category-option {
+      min-height: 58px;
+      display: grid;
+      grid-template-columns: 42px 1fr auto;
+      gap: 12px;
+      align-items: center;
+      padding: 8px 12px;
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      color: var(--text);
+      background: var(--surface);
+      text-align: left;
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
+    }
+
+    .category-option.active {
+      border-color: rgba(96, 165, 250, 0.5);
+      background: linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(5, 150, 105, 0.1));
+    }
+
+    .category-option span,
+    .customize-panel span {
+      display: block;
+      margin-top: 3px;
+      color: var(--text-muted);
+      font-size: 10px;
+    }
+
+    .category-option strong,
+    .field strong,
+    .quick-add strong,
+    .profile-row strong,
+    .report-row strong,
+    .legend-row strong {
+      font-size: 13px;
+    }
+
+    .customize-panel {
+      display: none;
+      margin-bottom: 14px;
+      padding: 12px;
+      border: 1px solid var(--border-strong);
+      border-radius: 20px;
+      background: linear-gradient(135deg, rgba(59, 130, 246, 0.16), rgba(5, 150, 105, 0.08));
+    }
+
+    .customize-panel.active {
+      display: block;
+    }
+
+    .icon-picker {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .icon-choice {
+      min-height: 48px;
+      display: grid;
+      place-items: center;
+      border-radius: 16px;
+      color: var(--text-soft);
+      background: var(--surface-soft);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .icon-choice.active {
+      color: var(--text);
+      background: var(--primary);
+    }
+
+    .field-list {
+      display: grid;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .field-row {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .field {
+      min-height: 44px;
+      padding: 8px 11px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      background: var(--surface);
+      transition: transform 180ms ease, background 180ms ease;
+    }
+
+    .field span {
+      color: var(--text-muted);
+      font-size: 10px;
+    }
+
+    .keypad {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 6px;
+      margin-top: 10px;
+    }
+
+    .key {
+      min-height: 49px;
+      border-radius: 14px;
+      color: var(--text);
+      background: var(--surface-2);
+      font-size: 15px;
+      font-weight: 850;
+      transition: transform 180ms ease, background 180ms ease;
+    }
+
+    .key.save {
+      grid-row: span 3;
+      background: linear-gradient(180deg, #10b981, var(--accent));
+      box-shadow: 0 12px 24px rgba(5, 150, 105, 0.28);
+    }
+
+    .chart-card,
+    .report-card,
+    .profile-card {
+      padding: 14px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      background: var(--surface);
+      box-shadow: var(--shadow-card);
+    }
+
+    .donut-wrap {
+      display: grid;
+      grid-template-columns: 116px 1fr;
+      gap: 14px;
+      align-items: center;
+    }
+
+    .donut {
+      width: 116px;
+      height: 116px;
+      border-radius: 50%;
+      background: conic-gradient(#3b82f6 0 42%, #22c55e 42% 62%, #f59e0b 62% 80%, #ef4444 80% 100%);
+      position: relative;
+    }
+
+    .donut::after {
+      content: "RM 2.4k";
+      position: absolute;
+      inset: 21px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      background: var(--surface);
+      font-size: 13px;
+      font-weight: 850;
+    }
+
+    .legend {
+      display: grid;
+      gap: 8px;
+    }
+
+    .legend-row,
+    .report-row,
+    .profile-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      min-height: 44px;
+    }
+
+    .legend-left {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--text-soft);
+      font-size: 11px;
+    }
+
+    .dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 999px;
+      background: var(--primary);
+      box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.04);
+    }
+
+    .bars {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 8px;
+      align-items: end;
+      height: 160px;
+      padding: 14px 4px 0;
+    }
+
+    .bar {
+      min-height: 26px;
+      border-radius: 999px 999px 8px 8px;
+      background: linear-gradient(180deg, var(--primary), rgba(59, 130, 246, 0.18));
+    }
+
+    .analytics-card {
+      padding: 16px;
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      background:
+        radial-gradient(circle at 50% 12%, rgba(59, 130, 246, 0.16), transparent 12rem),
+        var(--surface);
+      box-shadow: var(--shadow-card);
+    }
+
+    .chart-month {
+      min-height: 38px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 22px;
+      color: var(--text-soft);
+      font-weight: 800;
+    }
+
+    .chart-month button {
+      width: 36px;
+      height: 36px;
+      display: grid;
+      place-items: center;
+      border-radius: 14px;
+      color: var(--text-soft);
+      background: rgba(255, 255, 255, 0.04);
+    }
+
+    .analytics-donut-wrap {
+      display: grid;
+      justify-items: center;
+      gap: 16px;
+      margin-top: 12px;
+    }
+
+    .analytics-donut {
+      width: 184px;
+      height: 184px;
+      position: relative;
+      border-radius: 50%;
+      background: conic-gradient(#3b82f6 0 32%, #2dd4bf 32% 56%, #7c3aed 56% 74%, #facc15 74% 86%, #fb7185 86% 94%, #64748b 94% 100%);
+      box-shadow: 0 20px 42px rgba(0, 0, 0, 0.24);
+    }
+
+    .analytics-donut::after {
+      content: "";
+      position: absolute;
+      inset: 48px;
+      border-radius: 50%;
+      background: #111b34;
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+    }
+
+    .donut-center {
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      display: grid;
+      place-content: center;
+      text-align: center;
+    }
+
+    .donut-center span {
+      color: var(--text-muted);
+      font-size: 10px;
+    }
+
+    .donut-center strong {
+      margin-top: 3px;
+      font-size: 20px;
+      letter-spacing: -0.04em;
+    }
+
+    .analytics-donut-wrap .legend {
+      width: 100%;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .analytics-donut-wrap .legend-row {
+      min-height: 38px;
+      padding: 8px 10px;
+      border: 1px solid rgba(255, 255, 255, 0.07);
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.045);
+    }
+
+    .analytics-donut-wrap .legend-row strong {
+      font-size: 11px;
+    }
+
+    .budget-list {
+      display: grid;
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    .budget-row {
+      display: grid;
+      grid-template-columns: 38px 1fr auto;
+      gap: 10px;
+      align-items: center;
+      min-height: 58px;
+      padding: 9px;
+      border-radius: 18px;
+      background: var(--surface-soft);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    .budget-icon {
+      width: 38px;
+      height: 38px;
+      display: grid;
+      place-items: center;
+      border-radius: 14px;
+      color: #fed7aa;
+      background: rgba(251, 146, 60, 0.15);
+    }
+
+    .budget-row strong {
+      display: block;
+      font-size: 12px;
+    }
+
+    .budget-row span {
+      display: block;
+      margin-top: 4px;
+      color: var(--text-muted);
+      font-size: 10px;
+    }
+
+    .progress-track {
+      height: 6px;
+      margin-top: 7px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    .progress-fill {
+      height: 100%;
+      border-radius: inherit;
+      background: #fb923c;
+    }
+
+    .report-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+    }
+
+    .report-card strong {
+      display: block;
+      margin-top: 8px;
+      font-size: 18px;
+      letter-spacing: -0.04em;
+    }
+
+    .report-card span,
+    .profile-card span,
+    .muted {
+      color: var(--text-muted);
+      font-size: 10px;
+    }
+
+    .matrix {
+      display: grid;
+      grid-template-columns: 72px repeat(3, 1fr);
+      gap: 6px;
+      margin-top: 10px;
+      font-size: 10px;
+    }
+
+    .matrix div {
+      min-height: 38px;
+      display: grid;
+      place-items: center;
+      border-radius: 12px;
+      background: var(--surface-2);
+      color: var(--text-soft);
+    }
+
+    .matrix .hot {
+      color: var(--text);
+      background: rgba(239, 68, 68, 0.32);
+    }
+
+    .report-hero {
+      padding: 12px;
+      border: 1px solid rgba(74, 222, 128, 0.18);
+      border-radius: 24px;
+      background:
+        radial-gradient(circle at 86% 10%, rgba(34, 197, 94, 0.22), transparent 9rem),
+        radial-gradient(circle at 5% 0%, rgba(59, 130, 246, 0.18), transparent 11rem),
+        linear-gradient(145deg, rgba(6, 55, 34, 0.72), rgba(8, 17, 32, 0.94));
+      box-shadow: var(--shadow-card);
+    }
+
+    .report-metrics {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 9px;
+      margin-top: 12px;
+    }
+
+    .report-metric-card {
+      min-height: 82px;
+      padding: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.06);
+    }
+
+    .report-metric-card span {
+      color: var(--text-muted);
+      font-size: 10px;
+    }
+
+    .report-metric-card strong {
+      display: block;
+      margin-top: 8px;
+      font-size: 22px;
+      letter-spacing: -0.05em;
+    }
+
+    .report-metric-card small {
+      display: block;
+      margin-top: 7px;
+      color: #86efac;
+      font-size: 10px;
+    }
+
+    .trend-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin: 18px 0 10px;
+    }
+
+    .trend-header h3 {
+      margin: 0;
+      font-size: 14px;
+    }
+
+    .trend-header button {
+      min-height: 34px;
+      padding: 0 10px;
+      border-radius: 12px;
+      color: var(--text-soft);
+      background: rgba(255, 255, 255, 0.05);
+      font-size: 10px;
+    }
+
+    .trend-chart {
+      position: relative;
+      height: 190px;
+      overflow: hidden;
+      border-radius: 20px;
+      background:
+        linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px) 0 0 / 100% 38px,
+        linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px) 0 0 / 56px 100%;
+    }
+
+    .trend-chart svg {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+    }
+
+    .trend-months {
+      position: absolute;
+      left: 12px;
+      right: 12px;
+      bottom: 10px;
+      display: flex;
+      justify-content: space-between;
+      color: var(--text-muted);
+      font-size: 9px;
+    }
+
+    .trend-months .active {
+      padding: 4px 9px;
+      border-radius: 999px;
+      color: #bbf7d0;
+      background: rgba(34, 197, 94, 0.16);
+    }
+
+    .savings-card {
+      margin-top: 14px;
+      min-height: 108px;
+      display: grid;
+      grid-template-columns: 1fr 120px;
+      gap: 12px;
+      align-items: center;
+      padding: 14px;
+      border: 1px solid rgba(74, 222, 128, 0.14);
+      border-radius: 22px;
+      background: rgba(255, 255, 255, 0.055);
+    }
+
+    .savings-card span {
+      color: var(--text-muted);
+      font-size: 11px;
+    }
+
+    .savings-card strong {
+      display: block;
+      margin-top: 8px;
+      font-size: 23px;
+      letter-spacing: -0.05em;
+    }
+
+    .savings-card small {
+      display: block;
+      margin-top: 10px;
+      color: #86efac;
+      font-size: 10px;
+    }
+
+    .mini-trend {
+      height: 78px;
+      border-radius: 16px;
+      background: linear-gradient(145deg, transparent, rgba(34, 197, 94, 0.2));
+    }
+
+    .profile-head {
+      display: flex;
+      gap: 14px;
+      align-items: center;
+      padding: 16px;
+      border-radius: var(--radius-xl);
+      background:
+        radial-gradient(circle at 100% 0%, rgba(59, 130, 246, 0.28), transparent 9rem),
+        linear-gradient(135deg, rgba(59, 130, 246, 0.18), rgba(5, 150, 105, 0.14));
+      border: 1px solid var(--border-strong);
+      box-shadow: var(--shadow-card);
+    }
+
+    .avatar {
+      width: 58px;
+      height: 58px;
+      display: grid;
+      place-items: center;
+      border-radius: 22px;
+      background: linear-gradient(135deg, var(--primary), var(--accent));
+      font-size: 18px;
+      font-weight: 900;
+      box-shadow: 0 12px 26px rgba(59, 130, 246, 0.28);
+    }
+
+    .profile-head h3 {
+      margin: 0;
+    }
+
+    .profile-head p {
+      margin: 4px 0 0;
+      color: var(--text-muted);
+      font-size: 11px;
+    }
+
+    .quick-add {
+      margin-top: 14px;
+      padding: 14px;
+      border-radius: var(--radius-lg);
+      border: 1px solid rgba(5, 150, 105, 0.24);
+      background: linear-gradient(135deg, rgba(5, 150, 105, 0.16), rgba(59, 130, 246, 0.08));
+      box-shadow: var(--shadow-card);
+    }
+
+    .quick-add strong,
+    .quick-add span {
+      display: block;
+    }
+
+    .quick-add span {
+      margin-top: 4px;
+      color: var(--text-soft);
+      font-size: 10px;
+      line-height: 1.45;
+    }
+
+    .actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .action-btn {
+      min-height: 44px;
+      border-radius: 14px;
+      color: var(--text);
+      background: rgba(255, 255, 255, 0.1);
+      font-weight: 800;
+      transition: transform 180ms ease, background 180ms ease;
+    }
+
+    .action-btn.primary {
+      background: linear-gradient(135deg, var(--primary), var(--primary-strong));
+    }
+
+    .drawer-backdrop {
+      position: absolute;
+      inset: 0;
+      z-index: 20;
+      pointer-events: none;
+      opacity: 0;
+      background: rgba(2, 6, 23, 0.58);
+      transition: opacity 180ms ease;
+    }
+
+    .drawer {
+      position: absolute;
+      z-index: 21;
+      top: 0;
+      bottom: 0;
+      left: 0;
+      width: 292px;
+      padding: 54px 14px 18px;
+      transform: translateX(-102%);
+      border-right: 1px solid var(--border);
+      background:
+        radial-gradient(circle at 0% 0%, rgba(59, 130, 246, 0.16), transparent 12rem),
+        #0b1224;
+      box-shadow: 18px 0 44px rgba(0, 0, 0, 0.4);
+      transition: transform 220ms ease;
+    }
+
+    .phone.drawer-open .drawer-backdrop {
+      pointer-events: auto;
+      opacity: 1;
+    }
+
+    .phone.drawer-open .drawer {
+      transform: translateX(0);
+    }
+
+    .drawer-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      min-height: 44px;
+      margin-bottom: 12px;
+    }
+
+    .drawer-title strong {
+      font-size: 16px;
+    }
+
+    .drawer-section {
+      margin-top: 18px;
+    }
+
+    .drawer-section > span {
+      display: block;
+      margin: 0 8px 8px;
+      color: var(--text-muted);
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .drawer-item {
+      min-height: 48px;
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 8px 10px;
+      border-radius: 14px;
+      color: var(--text-soft);
+      background: transparent;
+      text-align: left;
+      transition: transform 180ms ease, background 180ms ease, color 180ms ease;
+    }
+
+    .drawer-item.active {
+      color: #dbeafe;
+      background: linear-gradient(135deg, rgba(59, 130, 246, 0.22), rgba(5, 150, 105, 0.1));
+    }
+
+    .drawer-item span {
+      color: var(--text-muted);
+      font-size: 10px;
+    }
+
+    @media (max-width: 900px) {
+      .page {
+        grid-template-columns: 1fr;
+        padding: 20px;
+      }
+
+      .brief {
+        order: 2;
+      }
+
+      .stage {
+        order: 1;
+      }
+    }
+
+    @media (max-width: 460px) {
+      .page {
+        padding: 0;
+      }
+
+      .brief {
+        padding: 22px;
+      }
+
+      .phone {
+        width: 100vw;
+        height: 100vh;
+        min-height: 760px;
+        border: 0;
+        border-radius: 0;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <section class="brief" aria-label="Design notes">
+      <div class="eyebrow">Android UI Mock · Budget Tracker</div>
+      <h1>Trusted daily money tracking for Android.</h1>
+      <p>
+        A consistent dark Android app mock using trust blue, profit green, soft surfaces,
+        clear touch targets, and finance-first hierarchy across entry, charts, reports, and settings.
+      </p>
+    </section>
+
+    <section class="stage" aria-label="Android phone mock">
+      <div class="phone">
+        <div class="status-bar" aria-hidden="true">
+          <span>21:02</span>
+          <span>5G  87%</span>
+        </div>
+
+        <button class="drawer-backdrop" id="drawerBackdrop" aria-label="Close menu"></button>
+        <aside class="drawer" aria-label="Navigation drawer">
+          <div class="drawer-title">
+            <strong>Money Tracker</strong>
+            <button class="icon-btn" id="drawerClose" aria-label="Close menu">
+              <svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>
+            </button>
+          </div>
+
+          <div class="drawer-section">
+            <span>Cashbook</span>
+            <button class="drawer-item active">
+              <strong>Daily Cashbook</strong>
+              <span>MYR</span>
+            </button>
+            <button class="drawer-item">
+              <strong>All cashbooks</strong>
+              <span>3 active</span>
+            </button>
+            <button class="drawer-item">
+              <strong>Manage cashbooks</strong>
+              <span>Open</span>
+            </button>
+          </div>
+
+          <div class="drawer-section">
+            <span>Quick actions</span>
+            <button class="drawer-item"><strong>Search transactions</strong><span></span></button>
+            <button class="drawer-item"><strong>Import / Export</strong><span>CSV</span></button>
+            <button class="drawer-item"><strong>Backup and restore</strong><span>Drive</span></button>
+            <button class="drawer-item"><strong>Settings</strong><span></span></button>
+          </div>
+        </aside>
+
+        <section class="screen active" id="screen-home" aria-label="Home screen">
+          <div class="top-bar">
+            <button class="icon-btn" id="menuButton" aria-label="Open menu">
+              <svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+            </button>
+            <div class="title-wrap center">
+              <h2>Money Tracker</h2>
+            </div>
+            <div class="top-actions">
+              <button class="icon-btn" aria-label="Search transactions">
+                <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+              </button>
+              <button class="icon-btn" aria-label="Open calendar">
+                <svg viewBox="0 0 24 24"><path d="M7 3v4M17 3v4"/><path d="M4 8h16"/><path d="M5 5h14v16H5z"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <div class="home-period" aria-label="Monthly summary">
+            <div class="period-cell month">
+              <span>2026</span>
+              <button>Jul <svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button>
+            </div>
+            <div class="period-cell">
+              <span>Expenses</span>
+              <strong>2,438.60</strong>
+            </div>
+            <div class="period-cell">
+              <span>Income</span>
+              <strong>3,723.00</strong>
+            </div>
+            <div class="period-cell">
+              <span>Balance</span>
+              <strong>1,284.40</strong>
+            </div>
+          </div>
+
+          <section class="summary-card" aria-label="Current cashbook balance">
+            <div class="summary-head">
+              <span>Daily Cashbook</span>
+              <strong>MYR</strong>
+            </div>
+            <div class="balance">RM 1,284.40</div>
+            <div class="metrics">
+              <div class="metric">
+                <span>Spent this month</span>
+                <strong>RM 2,438.60</strong>
+              </div>
+              <div class="metric">
+                <span>Remaining budget</span>
+                <strong>RM 1,561.40</strong>
+              </div>
+            </div>
+          </section>
+
+          <div class="section-title">
+            <h3>Recent transactions</h3>
+            <button>Filter</button>
+          </div>
+          <div class="transaction-list">
+            <div class="day-label"><span>Today</span><strong>Expenses: RM 211.00</strong></div>
+            <article class="transaction">
+              <div class="category-mark"><svg viewBox="0 0 24 24"><path d="M4 10h16"/><path d="M6 10l2-5h8l2 5"/><path d="M7 14h.01M17 14h.01"/><path d="M6 10v8h12v-8"/></svg></div>
+              <div>
+                <strong>Petrol</strong>
+                <span>Filled from notification</span>
+              </div>
+              <div class="amount expense">-RM 68.20</div>
+            </article>
+            <article class="transaction no-note">
+              <div class="category-mark"><svg viewBox="0 0 24 24"><path d="M6 7h12v13H6z"/><path d="M8 7a4 4 0 0 1 8 0"/></svg></div>
+              <div>
+                <strong>Groceries</strong>
+              </div>
+              <div class="amount expense">-RM 142.80</div>
+            </article>
+            <div class="day-label"><span>Yesterday</span><strong>Income: RM 3,500.00</strong></div>
+            <article class="transaction no-note">
+              <div class="category-mark"><svg viewBox="0 0 24 24"><path d="M12 3v18"/><path d="M17 7H9.5a3.5 3.5 0 0 0 0 7H14a3 3 0 0 1 0 6H6"/></svg></div>
+              <div>
+                <strong>Salary</strong>
+              </div>
+              <div class="amount income">+RM 3,500.00</div>
+            </article>
+          </div>
+        </section>
+
+        <section class="screen" id="screen-add" aria-label="Add transaction screen">
+          <div class="top-bar">
+            <button class="link">Cancel</button>
+            <div class="title-wrap">
+              <h2>Add transaction</h2>
+            </div>
+            <button class="link">Save</button>
+          </div>
+
+          <div class="segmented" role="tablist" aria-label="Transaction type">
+            <button class="pill active" data-type="Expense">Expense</button>
+            <button class="pill" data-type="Income">Income</button>
+          </div>
+
+          <div class="amount-panel">
+            <span>Amount</span>
+            <strong>RM 56.90</strong>
+          </div>
+
+          <div class="section-title">
+            <h3>Category</h3>
+            <button id="categoryManage">Manage</button>
+          </div>
+          <div class="category-grid">
+            <button class="category active" data-category="Petrol"><svg viewBox="0 0 24 24"><path d="M4 10h16"/><path d="M6 10l2-5h8l2 5"/><path d="M6 10v8h12v-8"/></svg>Petrol</button>
+            <button class="category" data-category="Food"><svg viewBox="0 0 24 24"><path d="M6 7h12v13H6z"/><path d="M8 7a4 4 0 0 1 8 0"/></svg>Food</button>
+            <button class="category" data-category="Transport"><svg viewBox="0 0 24 24"><path d="M4 11h16"/><path d="M5 11l2-6h10l2 6"/><path d="M7 15h.01M17 15h.01"/></svg>Transport</button>
+            <button class="category" data-category="Work"><svg viewBox="0 0 24 24"><path d="M4 8h16v12H4z"/><path d="M8 8V5h8v3"/></svg>Work</button>
+          </div>
+
+          <div class="field-row">
+            <button class="field"><strong>Note</strong><span>Add note</span></button>
+            <button class="field"><strong>Date</strong><span>Today</span></button>
+          </div>
+
+          <div class="keypad" aria-label="Custom amount keypad">
+            <button class="key">1</button><button class="key">2</button><button class="key">3</button><button class="key">⌫</button>
+            <button class="key">4</button><button class="key">5</button><button class="key">6</button><button class="key save">Save</button>
+            <button class="key">7</button><button class="key">8</button><button class="key">9</button>
+            <button class="key">.</button><button class="key">0</button><button class="key">00</button>
+          </div>
+        </section>
+
+        <section class="screen" id="screen-category" aria-label="Category selection screen">
+          <div class="top-bar">
+            <button class="icon-btn" id="categoryBack" aria-label="Back to add transaction">
+              <svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>
+            </button>
+            <div class="title-wrap center">
+              <small>Tap to select</small>
+              <h2>Category</h2>
+            </div>
+            <button class="icon-btn" id="categoryEdit" aria-label="Edit categories">
+              <svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+            </button>
+          </div>
+
+          <div class="customize-panel" id="categoryCustomize">
+            <strong>Customize category icon</strong>
+            <span>Choose an icon style for the selected category.</span>
+            <div class="icon-picker" aria-label="Category icon picker">
+              <button class="icon-choice active" aria-label="Dining icon"><svg viewBox="0 0 24 24"><path d="M7 3v8"/><path d="M4 3v8"/><path d="M10 3v8"/><path d="M4 11h6"/><path d="M7 11v10"/><path d="M17 3v18"/><path d="M14 3h6v8h-6z"/></svg></button>
+              <button class="icon-choice" aria-label="Car icon"><svg viewBox="0 0 24 24"><path d="M4 11h16"/><path d="m5 11 2-6h10l2 6"/><path d="M7 15h.01M17 15h.01"/><path d="M6 11v7h12v-7"/></svg></button>
+              <button class="icon-choice" aria-label="Shopping icon"><svg viewBox="0 0 24 24"><path d="M6 7h12v13H6z"/><path d="M8 7a4 4 0 0 1 8 0"/></svg></button>
+              <button class="icon-choice" aria-label="Home icon"><svg viewBox="0 0 24 24"><path d="M3 11 12 4l9 7"/><path d="M5 10v10h14V10"/></svg></button>
+              <button class="icon-choice" aria-label="Money icon"><svg viewBox="0 0 24 24"><path d="M12 3v18"/><path d="M17 7H9.5a3.5 3.5 0 0 0 0 7H14a3 3 0 0 1 0 6H6"/></svg></button>
+              <button class="icon-choice" aria-label="Health icon"><svg viewBox="0 0 24 24"><path d="M12 21s-7-4.4-7-11a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 6.6-7 11-7 11Z"/></svg></button>
+              <button class="icon-choice" aria-label="Phone icon"><svg viewBox="0 0 24 24"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/></svg></button>
+              <button class="icon-choice" aria-label="Ticket icon"><svg viewBox="0 0 24 24"><path d="M4 8a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v3a2 2 0 1 0 0 4v3a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-3a2 2 0 1 0 0-4Z"/><path d="M13 6v14"/></svg></button>
+              <button class="icon-choice" aria-label="Gift icon"><svg viewBox="0 0 24 24"><path d="M20 12v8H4v-8"/><path d="M2 7h20v5H2z"/><path d="M12 7v13"/><path d="M12 7H8a2 2 0 1 1 2-2c0 2-2 2-2 2"/><path d="M12 7h4a2 2 0 1 0-2-2c0 2 2 2 2 2"/></svg></button>
+              <button class="icon-choice" aria-label="More icon"><svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button>
+            </div>
+          </div>
+
+          <div class="category-list">
+            <button class="category-option active" data-category-option="Petrol">
+              <div class="category-mark"><svg viewBox="0 0 24 24"><path d="M4 10h16"/><path d="M6 10l2-5h8l2 5"/><path d="M6 10v8h12v-8"/></svg></div>
+              <div><strong>Petrol</strong><span>Current selected category</span></div>
+              <svg viewBox="0 0 24 24"><path d="m9 12 2 2 4-5"/></svg>
+            </button>
+            <button class="category-option" data-category-option="Food">
+              <div class="category-mark"><svg viewBox="0 0 24 24"><path d="M7 3v8"/><path d="M4 3v8"/><path d="M10 3v8"/><path d="M4 11h6"/><path d="M17 3v18"/><path d="M14 3h6v8h-6z"/></svg></div>
+              <div><strong>Food</strong><span>Meals, drinks, groceries</span></div>
+              <svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
+            </button>
+            <button class="category-option" data-category-option="Online Shopping">
+              <div class="category-mark"><svg viewBox="0 0 24 24"><path d="M6 7h12v13H6z"/><path d="M8 7a4 4 0 0 1 8 0"/></svg></div>
+              <div><strong>Online Shopping</strong><span>Shopping and parcels</span></div>
+              <svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
+            </button>
+            <button class="category-option" data-category-option="Transport">
+              <div class="category-mark"><svg viewBox="0 0 24 24"><path d="M4 11h16"/><path d="m5 11 2-6h10l2 6"/><path d="M6 11v7h12v-7"/></svg></div>
+              <div><strong>Transport</strong><span>Ride, toll, parking</span></div>
+              <svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
+            </button>
+            <button class="category-option" data-category-option="Rental Fee">
+              <div class="category-mark"><svg viewBox="0 0 24 24"><path d="M3 11 12 4l9 7"/><path d="M5 10v10h14V10"/></svg></div>
+              <div><strong>Rental Fee</strong><span>House and fixed living cost</span></div>
+              <svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
+            </button>
+            <button class="category-option" data-category-option="Doctor">
+              <div class="category-mark"><svg viewBox="0 0 24 24"><path d="M12 21s-7-4.4-7-11a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 6.6-7 11-7 11Z"/></svg></div>
+              <div><strong>Doctor</strong><span>Health and clinic</span></div>
+              <svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
+            </button>
+          </div>
+        </section>
+
+        <section class="screen" id="screen-charts" aria-label="Charts screen">
+          <div class="top-bar">
+            <div class="title-wrap">
+              <h2>Analytics</h2>
+            </div>
+            <button class="icon-btn" aria-label="Open chart filters">
+              <svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>
+            </button>
+          </div>
+
+          <div class="chips" aria-label="Period selector">
+            <button class="pill">Income</button>
+            <button class="pill active">Expenses</button>
+          </div>
+
+          <div class="analytics-card">
+            <div class="chart-month">
+              <button aria-label="Previous month"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button>
+              <span>July 2026</span>
+              <button aria-label="Next month"><svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></button>
+            </div>
+            <div class="analytics-donut-wrap">
+              <div class="analytics-donut" aria-label="Expense category donut chart">
+                <div class="donut-center">
+                  <span>Total Spent</span>
+                  <strong>RM 2,438</strong>
+                </div>
+              </div>
+              <div class="legend">
+                <div class="legend-row"><span class="legend-left"><span class="dot" style="background: #3b82f6"></span>Rent</span><strong>28%</strong></div>
+                <div class="legend-row"><span class="legend-left"><span class="dot" style="background: #2dd4bf"></span>Food</span><strong>20%</strong></div>
+                <div class="legend-row"><span class="legend-left"><span class="dot" style="background: #7c3aed"></span>Transport</span><strong>16%</strong></div>
+                <div class="legend-row"><span class="legend-left"><span class="dot" style="background: #facc15"></span>Subscription</span><strong>18%</strong></div>
+                <div class="legend-row"><span class="legend-left"><span class="dot" style="background: #fb7185"></span>Healthcare</span><strong>10%</strong></div>
+                <div class="legend-row"><span class="legend-left"><span class="dot" style="background: #64748b"></span>Other</span><strong>8%</strong></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="section-title">
+            <h3>Budget Spending</h3>
+            <button aria-label="Sort budget spending">
+              <svg viewBox="0 0 24 24"><path d="M7 4v16"/><path d="m4 17 3 3 3-3"/><path d="M17 20V4"/><path d="m14 7 3-3 3 3"/></svg>
+            </button>
+          </div>
+          <div class="analytics-card budget-list">
+            <div class="budget-row">
+              <div class="budget-icon"><svg viewBox="0 0 24 24"><path d="M3 11 12 4l9 7"/><path d="M5 10v10h14V10"/></svg></div>
+              <div>
+                <strong>Rent</strong>
+                <span>RM 1,200</span>
+                <div class="progress-track"><div class="progress-fill" style="width: 49%"></div></div>
+              </div>
+              <span>49%</span>
+            </div>
+            <div class="budget-row">
+              <div class="budget-icon" style="color: #fde68a; background: rgba(250, 204, 21, 0.14)"><svg viewBox="0 0 24 24"><path d="M6 7h12v13H6z"/><path d="M8 7a4 4 0 0 1 8 0"/></svg></div>
+              <div>
+                <strong>Food</strong>
+                <span>RM 482</span>
+                <div class="progress-track"><div class="progress-fill" style="width: 20%; background: #facc15"></div></div>
+              </div>
+              <span>20%</span>
+            </div>
+            <div class="budget-row">
+              <div class="budget-icon" style="color: #86efac; background: rgba(34, 197, 94, 0.14)"><svg viewBox="0 0 24 24"><path d="M4 11h16"/><path d="m5 11 2-6h10l2 6"/><path d="M6 11v7h12v-7"/></svg></div>
+              <div>
+                <strong>Transport</strong>
+                <span>RM 390</span>
+                <div class="progress-track"><div class="progress-fill" style="width: 16%; background: #22c55e"></div></div>
+              </div>
+              <span>16%</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="screen" id="screen-reports" aria-label="Reports screen">
+          <div class="top-bar">
+            <button class="icon-btn" aria-label="Back">
+              <svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>
+            </button>
+            <div class="title-wrap">
+              <h2>Budget Performance</h2>
+            </div>
+            <button class="icon-btn" aria-label="Open report calendar">
+              <svg viewBox="0 0 24 24"><path d="M7 3v4M17 3v4"/><path d="M4 8h16"/><path d="M5 5h14v16H5z"/></svg>
+            </button>
+          </div>
+
+          <div class="segmented">
+            <button class="pill active">Overview</button>
+            <button class="pill">Time</button>
+            <button class="pill">Category</button>
+          </div>
+
+          <div class="report-hero">
+            <div class="report-metrics">
+              <div class="report-metric-card">
+                <span>Total Expenses</span>
+                <strong>RM 2,450</strong>
+                <small>vs last month ↓ 12%</small>
+              </div>
+              <div class="report-metric-card">
+                <span>Budget Efficiency</span>
+                <strong>+32%</strong>
+                <small>You're on track</small>
+              </div>
+            </div>
+
+            <div class="trend-header">
+              <h3>Monthly Trend</h3>
+              <button>This Year</button>
+            </div>
+            <div class="trend-chart" aria-label="Monthly budget trend line chart">
+              <svg viewBox="0 0 320 190" preserveAspectRatio="none">
+                <defs>
+                  <linearGradient id="reportArea" x1="0" x2="0" y1="0" y2="1">
+                    <stop offset="0%" stop-color="#4ade80" stop-opacity="0.38"/>
+                    <stop offset="100%" stop-color="#4ade80" stop-opacity="0"/>
+                  </linearGradient>
+                </defs>
+                <path d="M18 128 C35 132 42 94 62 96 C80 98 82 126 102 132 C122 138 126 94 145 92 C164 90 169 68 190 72 C212 76 210 62 230 84 C250 108 255 96 270 70 C286 42 301 50 310 28 L310 170 L18 170 Z" fill="url(#reportArea)"/>
+                <path d="M18 128 C35 132 42 94 62 96 C80 98 82 126 102 132 C122 138 126 94 145 92 C164 90 169 68 190 72 C212 76 210 62 230 84 C250 108 255 96 270 70 C286 42 301 50 310 28" fill="none" stroke="#86efac" stroke-width="3"/>
+                <g fill="#dcfce7" stroke="#052e16" stroke-width="2">
+                  <circle cx="62" cy="96" r="4"/><circle cx="102" cy="132" r="4"/><circle cx="145" cy="92" r="4"/><circle cx="190" cy="72" r="4"/><circle cx="230" cy="84" r="4"/><circle cx="270" cy="70" r="4"/>
+                </g>
+              </svg>
+              <div class="trend-months">
+                <span>Mar</span><span>Apr</span><span>May</span><span>Jun</span><span class="active">Jul</span><span>Aug</span><span>Sep</span>
+              </div>
+            </div>
+
+            <div class="savings-card">
+              <div>
+                <span>Current Savings</span>
+                <strong>RM 2,450.00</strong>
+                <small>vs last month ↓ 12%</small>
+              </div>
+              <svg class="mini-trend" viewBox="0 0 120 78" preserveAspectRatio="none">
+                <path d="M5 62 L26 28 L42 40 L58 22 L75 34 L94 23 L115 12 L115 78 L5 78 Z" fill="rgba(34,197,94,0.28)"/>
+                <path d="M5 62 L26 28 L42 40 L58 22 L75 34 L94 23 L115 12" fill="none" stroke="#86efac" stroke-width="2"/>
+              </svg>
+            </div>
+          </div>
+        </section>
+
+        <section class="screen" id="screen-profile" aria-label="Profile screen">
+          <div class="top-bar">
+            <div class="title-wrap">
+              <small>Security · Backup · Settings</small>
+              <h2>Profile</h2>
+            </div>
+            <button class="icon-btn" aria-label="Open settings">
+              <svg viewBox="0 0 24 24"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-.4-1.1 1.7 1.7 0 0 0-1-.6 1.7 1.7 0 0 0-1.88.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1.1-.4H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.1-.4 1.7 1.7 0 0 0 .6-1 1.7 1.7 0 0 0-.34-1.88l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1.1V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 .4 1.1 1.7 1.7 0 0 0 1 .6 1.7 1.7 0 0 0 1.88-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9c.2.36.34.75.4 1.15.06.4.2.78.48 1.08.3.28.68.42 1.08.48H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.1.4 1.7 1.7 0 0 0-.41.89Z"/></svg>
+            </button>
+          </div>
+
+          <div class="profile-head">
+            <div class="avatar">BT</div>
+            <div>
+              <h3>Daily Cashbook</h3>
+              <p>Local data source · Google Drive backup optional</p>
+            </div>
+          </div>
+
+          <div class="quick-add">
+            <strong>Payment notification quick add</strong>
+            <span>Payment notification parsing is enabled. Draft notifications auto-cancel and never block normal usage.</span>
+            <div class="actions">
+              <button class="action-btn primary">Manage sources</button>
+              <button class="action-btn">Draft history</button>
+            </div>
+          </div>
+
+          <div class="section-title">
+            <h3>Manage</h3>
+          </div>
+          <div class="profile-card">
+            <div class="profile-row"><strong>Cashbooks</strong><span>3 active</span></div>
+            <div class="profile-row"><strong>Categories</strong><span>Localized defaults</span></div>
+            <div class="profile-row"><strong>Import / Export</strong><span>CSV</span></div>
+          </div>
+
+          <div class="section-title">
+            <h3>Settings</h3>
+          </div>
+          <div class="profile-card">
+            <div class="profile-row"><strong>Language / 语言</strong><span>Follow system</span></div>
+            <div class="profile-row"><strong>App lock</strong><span>Biometric + PIN</span></div>
+            <div class="profile-row"><strong>Backup and restore</strong><span>Encrypted JSON</span></div>
+          </div>
+        </section>
+
+        <button class="fab" id="fab" aria-label="Add transaction">
+          <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
+
+        <nav class="bottom-nav" aria-label="Primary navigation">
+          <button class="bottom-tab active" data-target="home" aria-label="Home tab">
+            <svg viewBox="0 0 24 24"><path d="M3 11 12 4l9 7"/><path d="M5 10v10h14V10"/><path d="M9 20v-6h6v6"/></svg>
+            Home
+          </button>
+          <button class="bottom-tab" data-target="charts" aria-label="Charts tab">
+            <svg viewBox="0 0 24 24"><path d="M4 19V5"/><path d="M4 19h16"/><path d="M8 16v-5"/><path d="M12 16V8"/><path d="M16 16v-9"/></svg>
+            Charts
+          </button>
+          <button class="bottom-tab" data-target="add" aria-label="Add tab">
+            <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+            Add
+          </button>
+          <button class="bottom-tab" data-target="profile" aria-label="Profile tab">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
+            Profile
+          </button>
+        </nav>
+
+        <div class="gesture-bar" aria-hidden="true"><span></span></div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const tabs = document.querySelectorAll(".bottom-tab");
+    const screens = document.querySelectorAll(".screen");
+    const fab = document.querySelector("#fab");
+    const bottomNav = document.querySelector(".bottom-nav");
+    const phone = document.querySelector(".phone");
+    const menuButton = document.querySelector("#menuButton");
+    const drawerClose = document.querySelector("#drawerClose");
+    const drawerBackdrop = document.querySelector("#drawerBackdrop");
+    const categoryManage = document.querySelector("#categoryManage");
+    const categoryBack = document.querySelector("#categoryBack");
+    const categoryEdit = document.querySelector("#categoryEdit");
+    const categoryCustomize = document.querySelector("#categoryCustomize");
+    const addCategoryButtons = document.querySelectorAll("[data-category]");
+    const categoryOptionButtons = document.querySelectorAll("[data-category-option]");
+    let categoryEditMode = false;
+
+    function showScreen(name) {
+      screens.forEach((screen) => {
+        screen.classList.toggle("active", screen.id === `screen-${name}`);
+      });
+      tabs.forEach((tab) => {
+        tab.classList.toggle("active", tab.dataset.target === name);
+      });
+      fab.style.display = name === "home" ? "grid" : "none";
+      bottomNav.style.display = name === "category" ? "none" : "grid";
+    }
+
+    tabs.forEach((tab) => {
+      tab.addEventListener("click", () => showScreen(tab.dataset.target));
+    });
+
+    fab.addEventListener("click", () => showScreen("add"));
+
+    function closeDrawer() {
+      phone.classList.remove("drawer-open");
+    }
+
+    menuButton.addEventListener("click", () => {
+      phone.classList.add("drawer-open");
+    });
+
+    drawerClose.addEventListener("click", closeDrawer);
+    drawerBackdrop.addEventListener("click", closeDrawer);
+
+    function setCategoryEditMode(isEditing) {
+      categoryEditMode = isEditing;
+      categoryCustomize.classList.toggle("active", isEditing);
+      categoryEdit.classList.toggle("active", isEditing);
+      categoryEdit.setAttribute("aria-pressed", String(isEditing));
+    }
+
+    categoryManage.addEventListener("click", () => {
+      setCategoryEditMode(false);
+      showScreen("category");
+    });
+    categoryBack.addEventListener("click", () => {
+      setCategoryEditMode(false);
+      showScreen("add");
+    });
+    categoryEdit.addEventListener("click", () => {
+      setCategoryEditMode(!categoryEditMode);
+    });
+
+    function updateCategoryOptionIndicator(button, isSelected) {
+      const indicator = button.lastElementChild;
+      if (!indicator || indicator.tagName.toLowerCase() !== "svg") return;
+
+      indicator.innerHTML = isSelected
+        ? '<path d="m9 12 2 2 4-5"/>'
+        : '<path d="m9 18 6-6-6-6"/>';
+    }
+
+    function mirrorCategoryToAddButton(button, option, name) {
+      const icon = option?.querySelector(".category-mark svg")?.cloneNode(true);
+
+      button.dataset.category = name;
+      button.replaceChildren(...(icon ? [icon] : []), document.createTextNode(name));
+    }
+
+    function selectCategory(name) {
+      const selectedOption = [...categoryOptionButtons].find((item) => item.dataset.categoryOption === name);
+      let matchingAddButton = [...addCategoryButtons].find((item) => item.dataset.category === name);
+
+      if (!matchingAddButton && addCategoryButtons[0] && selectedOption) {
+        matchingAddButton = addCategoryButtons[0];
+        mirrorCategoryToAddButton(matchingAddButton, selectedOption, name);
+      }
+
+      addCategoryButtons.forEach((item) => {
+        item.classList.toggle("active", item.dataset.category === name);
+      });
+
+      categoryOptionButtons.forEach((item) => {
+        const isSelected = item.dataset.categoryOption === name;
+        item.classList.toggle("active", isSelected);
+        updateCategoryOptionIndicator(item, isSelected);
+      });
+    }
+
+    addCategoryButtons.forEach((button) => {
+      button.addEventListener("click", () => selectCategory(button.dataset.category));
+    });
+
+    categoryOptionButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        selectCategory(button.dataset.categoryOption);
+        setCategoryEditMode(false);
+      });
+    });
+
+    document.querySelectorAll(".icon-choice").forEach((button) => {
+      button.addEventListener("click", () => {
+        document.querySelectorAll(".icon-choice").forEach((item) => item.classList.remove("active"));
+        button.classList.add("active");
+      });
+    });
+
+    document.querySelectorAll("[data-type]").forEach((button) => {
+      button.addEventListener("click", () => {
+        document.querySelectorAll("[data-type]").forEach((item) => item.classList.remove("active"));
+        button.classList.add("active");
+      });
+    });
+  </script>
+</body>
+</html>
