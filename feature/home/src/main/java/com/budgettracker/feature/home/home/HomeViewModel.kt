@@ -80,7 +80,6 @@ class HomeViewModel @Inject constructor(
                 balance = AmountFormatter.formatPlain(summary.balance),
                 currency = summary.balance.currency.name,
                 cashbookName = cashbook?.name ?: "No cashbook",
-                remainingBudget = "Not set",
             ),
             transactions = transactions
                 .map { transaction ->

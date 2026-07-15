@@ -59,6 +59,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.budgettracker.core.domain.money.AmountFormatter
+import com.budgettracker.core.model.Money
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -114,6 +116,12 @@ private fun HomeScreen(
             }
             .withVisibleDayHeaders()
     }
+    val selectedMonthlySummary = remember(monthlySummary, transactions, selectedMonth) {
+        monthlySummary.forMonth(
+            selectedMonth = selectedMonth,
+            transactions = transactions,
+        )
+    }
 
     Column(
         modifier = modifier
@@ -129,7 +137,7 @@ private fun HomeScreen(
             onCalendarClick = { showMonthDialog = true },
         )
         Spacer(modifier = Modifier.height(14.dp))
-        BalanceCard(summary = monthlySummary)
+        BalanceCard(summary = selectedMonthlySummary)
         Spacer(modifier = Modifier.height(14.dp))
         SectionHeader(
             title = filterTitle(
@@ -337,7 +345,7 @@ private fun BalanceCard(summary: MonthlySummaryUiModel) {
         }
         Spacer(modifier = Modifier.height(10.dp))
         Text(
-            text = "RM ${summary.balance}",
+            text = "RM ${summary.expenses}",
             color = Color.White,
             fontSize = 34.sp,
             lineHeight = 38.sp,
@@ -347,18 +355,56 @@ private fun BalanceCard(summary: MonthlySummaryUiModel) {
         Spacer(modifier = Modifier.height(14.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             BalanceMetricCard(
-                label = "Spent this month",
-                value = "RM ${summary.expenses}",
+                label = "Remaining",
+                value = summary.balance.asRmAmount(),
                 modifier = Modifier.weight(1f),
             )
             BalanceMetricCard(
-                label = "Remaining budget",
-                value = summary.remainingBudget,
+                label = "Incomee",
+                value = "RM ${summary.income}",
                 modifier = Modifier.weight(1f),
             )
         }
     }
 }
+
+private fun String.asRmAmount(): String =
+    if (startsWith("-")) {
+        "-RM ${removePrefix("-")}"
+    } else {
+        "RM $this"
+    }
+
+private fun MonthlySummaryUiModel.forMonth(
+    selectedMonth: YearMonth,
+    transactions: List<HomeTransactionUiModel>,
+): MonthlySummaryUiModel {
+    val monthTransactions = transactions.filter { transaction ->
+        YearMonth.from(transaction.date) == selectedMonth
+    }
+    val income = monthTransactions
+        .filter { it.isIncome }
+        .sumOf { it.amount.extractMinorUnits() }
+    val expenses = monthTransactions
+        .filterNot { it.isIncome }
+        .sumOf { it.amount.extractMinorUnits() }
+
+    return copy(
+        year = selectedMonth.year.toString(),
+        month = selectedMonth.month.name.take(3).lowercase().replaceFirstChar(Char::titlecase),
+        expenses = expenses.formatPlainAmount(),
+        income = income.formatPlainAmount(),
+        balance = (income - expenses).formatPlainAmount(),
+    )
+}
+
+private fun String.extractMinorUnits(): Long {
+    val numeric = filter { it.isDigit() || it == '.' }
+    return runCatching { AmountFormatter.parseMinorUnits(numeric) }.getOrDefault(0L)
+}
+
+private fun Long.formatPlainAmount(): String =
+    AmountFormatter.formatPlain(Money(this))
 
 @Composable
 private fun BalanceMetricCard(
@@ -694,7 +740,6 @@ data class MonthlySummaryUiModel(
     val balance: String = "0.00",
     val currency: String = "MYR",
     val cashbookName: String = "Personal",
-    val remainingBudget: String = "Not set",
 )
 
 data class HomeTransactionUiModel(
