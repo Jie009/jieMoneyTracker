@@ -60,8 +60,12 @@ class AddTransactionViewModel @Inject constructor(
         initialValue = emptyList(),
     )
 
-    fun load(transactionId: String?) {
-        if (_uiState.value.loadedTransactionId == transactionId && _uiState.value.cashbookId != null) return
+    fun load(
+        transactionId: String?,
+        prefill: AddTransactionPrefill? = null,
+    ) {
+        val state = _uiState.value
+        if (prefill == null && state.loadedTransactionId == transactionId && state.cashbookId != null) return
 
         viewModelScope.launch {
             val cashbook = cashbookRepository.getSelectedCashbook() ?: return@launch
@@ -69,13 +73,18 @@ class AddTransactionViewModel @Inject constructor(
 
             val existingTransaction = transactionId?.let { transactionRepository.getTransaction(it) }
             if (existingTransaction == null) {
+                val transactionType = prefill?.transactionType ?: TransactionType.Expense
                 val firstCategory = categoryRepository
-                    .getCategoriesByType(cashbook.id, TransactionType.Expense)
+                    .getCategoriesByType(cashbook.id, transactionType)
                     .firstOrNull()
                 _uiState.value = AddTransactionUiState(
                     loadedTransactionId = transactionId,
                     cashbookId = cashbook.id,
                     selectedCategoryId = firstCategory?.id,
+                    amountInput = prefill?.amountInput.orEmpty(),
+                    transactionType = transactionType,
+                    note = prefill?.note.orEmpty(),
+                    source = prefill?.let { TransactionSource.Notification } ?: TransactionSource.Manual,
                     dateMillis = todayUtcMillis(),
                 )
             } else {
@@ -164,7 +173,7 @@ class AddTransactionViewModel @Inject constructor(
                 type = state.transactionType,
                 dateTime = state.dateMillis.toInstantAtSystemStartOfDay(),
                 note = state.note.trim().ifBlank { null },
-                source = existing?.source ?: TransactionSource.Manual,
+                source = existing?.source ?: state.source,
                 originalSourceId = existing?.originalSourceId,
                 importBatchId = existing?.importBatchId,
                 createdAt = existing?.createdAt ?: now,
@@ -191,10 +200,17 @@ class AddTransactionViewModel @Inject constructor(
             amountInput = AmountFormatter.formatPlain(amount),
             transactionType = type,
             note = note.orEmpty(),
+            source = source,
             dateMillis = dateMillis,
         )
     }
 }
+
+data class AddTransactionPrefill(
+    val amountInput: String,
+    val transactionType: TransactionType,
+    val note: String = "",
+)
 
 data class AddTransactionUiState(
     val loadedTransactionId: String? = null,
@@ -203,6 +219,7 @@ data class AddTransactionUiState(
     val amountInput: String = "",
     val transactionType: TransactionType = TransactionType.Expense,
     val note: String = "",
+    val source: TransactionSource = TransactionSource.Manual,
     val dateMillis: Long = todayUtcMillis(),
 )
 

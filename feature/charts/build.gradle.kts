@@ -10,4 +10,8 @@ dependencies {
     implementation(project(":core:data"))
     implementation(project(":core:ui"))
     implementation(project(":core:design-system"))
+
+    implementation(libs.androidx.hilt.navigation.compose)
+    implementation(libs.androidx.lifecycle.runtime.compose)
+    implementation(libs.androidx.lifecycle.viewmodel.compose)
 }

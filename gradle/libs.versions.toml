@@ -12,6 +12,11 @@ room = "2.6.1"
 coroutines = "1.9.0"
 kotlinxDatetime = "0.6.1"
 kotlinxSerializationJson = "1.7.3"
+googleApiClient = "2.7.0"
+googleDriveApi = "v3-rev20240509-2.0.0"
+googleHttpClientGson = "1.44.2"
+googleHttpClientAndroid = "1.44.2"
+playServicesAuth = "21.2.0"
 junit = "4.13.2"
 androidxTestExt = "1.2.1"
 espresso = "3.6.1"
@@ -40,9 +45,14 @@ coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", ve
 espresso-core = { module = "androidx.test.espresso:espresso-core", version.ref = "espresso" }
 hilt-android = { module = "com.google.dagger:hilt-android", version.ref = "hilt" }
 hilt-compiler = { module = "com.google.dagger:hilt-compiler", version.ref = "hilt" }
+google-api-client-android = { module = "com.google.api-client:google-api-client-android", version.ref = "googleApiClient" }
+google-api-services-drive = { module = "com.google.apis:google-api-services-drive", version.ref = "googleDriveApi" }
+google-http-client-android = { module = "com.google.http-client:google-http-client-android", version.ref = "googleHttpClientAndroid" }
+google-http-client-gson = { module = "com.google.http-client:google-http-client-gson", version.ref = "googleHttpClientGson" }
 junit = { module = "junit:junit", version.ref = "junit" }
 kotlinx-datetime = { module = "org.jetbrains.kotlinx:kotlinx-datetime", version.ref = "kotlinxDatetime" }
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinxSerializationJson" }
+play-services-auth = { module = "com.google.android.gms:play-services-auth", version.ref = "playServicesAuth" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

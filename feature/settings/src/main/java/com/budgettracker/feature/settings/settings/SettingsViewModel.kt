@@ -1,9 +1,12 @@
 package com.budgettracker.feature.settings.settings
 
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.budgettracker.core.data.backup.GoogleDriveBackupRepository
+import com.budgettracker.core.data.backup.GoogleDriveBackupState
 import com.budgettracker.core.data.seed.InitialDataSeeder
 import com.budgettracker.core.data.repository.CashbookRepository
 import com.budgettracker.core.data.repository.CategoryRepository
@@ -63,6 +66,7 @@ class SettingsViewModel @Inject constructor(
     private val transactionRepository: TransactionRepository,
     private val initialDataSeeder: InitialDataSeeder,
     private val userPreferencesRepository: UserPreferencesRepository,
+    private val googleDriveBackupRepository: GoogleDriveBackupRepository,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(SettingsUiState())
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
@@ -73,6 +77,14 @@ class SettingsViewModel @Inject constructor(
             started = SharingStarted.WhileSubscribed(5_000),
             initialValue = AmountInputMode.NormalDecimal,
         )
+
+    val googleDriveBackupState: StateFlow<GoogleDriveBackupState> =
+        googleDriveBackupRepository.state
+            .stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.WhileSubscribed(5_000),
+                initialValue = GoogleDriveBackupState(),
+            )
 
     private val selectedCashbook = cashbookRepository.observeSelectedCashbook()
         .stateIn(
@@ -193,6 +205,38 @@ class SettingsViewModel @Inject constructor(
     fun updateAmountInputMode(mode: AmountInputMode) {
         userPreferencesRepository.setAmountInputMode(mode)
         _uiState.update { state -> state.copy(message = "Amount input type updated.") }
+    }
+
+    fun googleDriveSignInIntent(): Intent = googleDriveBackupRepository.signInIntent()
+
+    fun handleGoogleDriveSignInResult(data: Intent?) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isBusy = true, message = "Connecting Google Drive...") }
+            val result = runCatching {
+                googleDriveBackupRepository.handleSignInResult(data)
+            }
+            _uiState.update { state ->
+                result.fold(
+                    onSuccess = { state.copy(isBusy = false) },
+                    onFailure = { error ->
+                        state.copy(
+                            isBusy = false,
+                            message = error.localizedMessage ?: "Google Drive sign-in cancelled.",
+                        )
+                    },
+                )
+            }
+        }
+    }
+
+    fun syncGoogleDriveBackup() {
+        viewModelScope.launch {
+            googleDriveBackupRepository.requestSync()
+        }
+    }
+
+    fun disconnectGoogleDrive() {
+        googleDriveBackupRepository.disconnect()
     }
 
     fun updateCategory(category: Category, name: String, icon: String, color: String) {

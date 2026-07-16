@@ -22,17 +22,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.automirrored.filled.TrendingUp
-import androidx.compose.material.icons.filled.DirectionsCar
+import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.FilterList
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.LocalHospital
-import androidx.compose.material.icons.filled.Payments
-import androidx.compose.material.icons.filled.Redeem
-import androidx.compose.material.icons.filled.Savings
-import androidx.compose.material.icons.filled.ShoppingBag
-import androidx.compose.material.icons.filled.Subscriptions
-import androidx.compose.material.icons.filled.Work
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -43,6 +34,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -58,46 +51,58 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.budgettracker.core.domain.money.AmountFormatter
+import com.budgettracker.core.model.Category
+import com.budgettracker.core.model.Money
+import com.budgettracker.core.model.Transaction
+import com.budgettracker.core.model.TransactionType
+import com.budgettracker.core.ui.category.asCategoryIcon
+import com.budgettracker.core.ui.category.toCategoryColor
 import java.time.YearMonth
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 @Composable
 fun ChartsRoute(
     modifier: Modifier = Modifier,
+    viewModel: ChartsViewModel = hiltViewModel(),
 ) {
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+
     ChartsScreen(
-        expenseChartCategories = sampleExpenseChartCategories,
-        expenseDetails = sampleExpenseDetails,
+        uiState = uiState,
         modifier = modifier,
     )
 }
 
 @Composable
 private fun ChartsScreen(
-    expenseChartCategories: List<ChartCategoryUiModel>,
-    expenseDetails: List<BudgetSpendingUiModel>,
+    uiState: ChartsUiState,
     modifier: Modifier = Modifier,
 ) {
     var selectedMode by remember { mutableStateOf(ChartMode.Expenses) }
-    var selectedMonth by remember { mutableStateOf(YearMonth.of(2026, 7)) }
+    var selectedMonth by remember { mutableStateOf(YearMonth.now()) }
     var selectedCategory by remember { mutableStateOf<String?>(null) }
     var showCategoryFilter by remember { mutableStateOf(false) }
-    val monthlyCategoryBreakdown = selectedCategory?.let { category ->
-        sampleCategoryMonthlyBreakdown.getValue(selectedMode).getValue(category)
+    val monthlyDetails = remember(uiState, selectedMode, selectedMonth) {
+        uiState.toMonthlyDetails(
+            selectedMode = selectedMode,
+            selectedMonth = selectedMonth,
+        )
+    }
+    val monthlyCategoryBreakdown = remember(uiState, selectedMode, selectedMonth, selectedCategory) {
+        selectedCategory?.let { category ->
+            uiState.toCategoryMonthlyBreakdown(
+                selectedMode = selectedMode,
+                selectedMonth = selectedMonth,
+                selectedCategory = category,
+            )
+        }
     }
     val coloredMonthlyCategoryBreakdown = monthlyCategoryBreakdown?.withMonthlyColors()
     val displayedCategories = coloredMonthlyCategoryBreakdown?.toMonthlyChartCategories()
-        ?: if (selectedMode == ChartMode.Expenses) {
-        expenseChartCategories
-    } else {
-        sampleIncomeChartCategories
-    }
-    val monthlyDetails = if (selectedMode == ChartMode.Expenses) {
-        expenseDetails
-    } else {
-        sampleIncomeSources
-    }
+        ?: monthlyDetails.toMonthlyChartCategories()
     val displayedBudgets = coloredMonthlyCategoryBreakdown?.withTotalSharePercents() ?: monthlyDetails
     val filterOptions = monthlyDetails.map { it.name }
     val hasCategoryFilter = selectedCategory != null
@@ -108,7 +113,7 @@ private fun ChartsScreen(
         "Income Sources"
     }
     val totalAmount = coloredMonthlyCategoryBreakdown?.totalAmountLabel()
-        ?: if (selectedMode == ChartMode.Expenses) "RM 2,438" else "RM 3,723"
+        ?: monthlyDetails.totalAmountLabel()
     val totalLabel = selectedCategory
         ?: if (selectedMode == ChartMode.Expenses) "Total Spent" else "Total Income"
 
@@ -305,9 +310,19 @@ private fun AnalyticsCard(
             }
         }
         Spacer(modifier = Modifier.height(18.dp))
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            categories.forEach { category ->
-                LegendRow(category = category)
+        if (categories.isEmpty()) {
+            Text(
+                text = "No data for this month",
+                color = MutedText,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.align(Alignment.CenterHorizontally),
+            )
+        } else {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                categories.forEach { category ->
+                    LegendRow(category = category)
+                }
             }
         }
     }
@@ -531,8 +546,18 @@ private fun BudgetSpendingCard(budgets: List<BudgetSpendingUiModel>) {
             .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        budgets.forEach { budget ->
-            BudgetRow(budget = budget)
+        if (budgets.isEmpty()) {
+            Text(
+                text = "No transactions found for this selection.",
+                color = MutedText,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(4.dp),
+            )
+        } else {
+            budgets.forEach { budget ->
+                BudgetRow(budget = budget)
+            }
         }
     }
 }
@@ -676,9 +701,11 @@ private data class ChartCategoryUiModel(
 private data class BudgetSpendingUiModel(
     val name: String,
     val amount: String,
+    val minorUnits: Long,
     val percent: Int,
     val color: Color,
     val icon: ImageVector,
+    val categoryIds: Set<String?>,
 )
 
 private enum class ChartMode {
@@ -686,32 +713,125 @@ private enum class ChartMode {
     Expenses,
 }
 
-private fun List<BudgetSpendingUiModel>.toMonthlyChartCategories(): List<ChartCategoryUiModel> {
-    val amounts = map { it.amount.toAmountValue() }
-    val total = amounts.sum().takeIf { it > 0f } ?: 1f
+private val ChartMode.transactionType: TransactionType
+    get() = when (this) {
+        ChartMode.Income -> TransactionType.Income
+        ChartMode.Expenses -> TransactionType.Expense
+    }
 
-    return mapIndexed { index, item ->
+private fun ChartsUiState.toMonthlyDetails(
+    selectedMode: ChartMode,
+    selectedMonth: YearMonth,
+): List<BudgetSpendingUiModel> {
+    val categoryById = categories.associateBy { it.id }
+    val selectedType = selectedMode.transactionType
+
+    return transactions
+        .filter { transaction ->
+            transaction.type == selectedType && transaction.dateTime.toYearMonth() == selectedMonth
+        }
+        .groupBy { it.categoryId }
+        .map { (categoryId, transactions) ->
+            val category = categoryId?.let(categoryById::get)
+            transactions.toBudgetSpendingUiModel(
+                category = category,
+                categoryIds = setOf(categoryId),
+            )
+        }
+        .sortedByDescending { it.minorUnits }
+        .groupOverflowCategories()
+        .withTotalSharePercents()
+}
+
+private fun ChartsUiState.toCategoryMonthlyBreakdown(
+    selectedMode: ChartMode,
+    selectedMonth: YearMonth,
+    selectedCategory: String,
+): List<BudgetSpendingUiModel> {
+    val selectedType = selectedMode.transactionType
+    val category = categories.firstOrNull { category ->
+        category.type == selectedType && category.name == selectedCategory
+    }
+    val selectedCategoryIds = toMonthlyDetails(
+        selectedMode = selectedMode,
+        selectedMonth = selectedMonth,
+    ).firstOrNull { it.name == selectedCategory }?.categoryIds ?: setOf(category?.id)
+
+    return (0L..2L).map { monthsAgo ->
+        val month = selectedMonth.minusMonths(monthsAgo)
+        transactions
+            .filter { transaction ->
+                transaction.type == selectedType &&
+                    transaction.dateTime.toYearMonth() == month &&
+                    transaction.categoryId in selectedCategoryIds
+            }
+            .toBudgetSpendingUiModel(
+                category = category,
+                name = month.format(MonthFormatter),
+                categoryIds = selectedCategoryIds,
+            )
+    }.withTotalSharePercents()
+}
+
+private fun List<Transaction>.toBudgetSpendingUiModel(
+    category: Category?,
+    name: String = category?.name ?: "Uncategorized",
+    categoryIds: Set<String?>,
+): BudgetSpendingUiModel {
+    val minorUnits = sumOf { it.amount.minorUnits }
+
+    return BudgetSpendingUiModel(
+        name = name,
+        amount = minorUnits.toMoneyLabel(),
+        minorUnits = minorUnits,
+        percent = 0,
+        color = category?.color?.toCategoryColor() ?: Color(0xFF64748B),
+        icon = category?.icon?.asCategoryIcon() ?: Icons.Filled.Category,
+        categoryIds = categoryIds,
+    )
+}
+
+private fun List<BudgetSpendingUiModel>.groupOverflowCategories(): List<BudgetSpendingUiModel> {
+    if (size <= MaxChartCategories) return this
+
+    val visibleCategories = take(MaxChartCategories - 1)
+    val overflowCategories = drop(MaxChartCategories - 1)
+    val overflowMinorUnits = overflowCategories.sumOf { it.minorUnits }
+    val otherCategory = BudgetSpendingUiModel(
+        name = "Other",
+        amount = overflowMinorUnits.toMoneyLabel(),
+        minorUnits = overflowMinorUnits,
+        percent = 0,
+        color = Color(0xFF94A3B8),
+        icon = Icons.Filled.Category,
+        categoryIds = overflowCategories.flatMap { it.categoryIds }.toSet(),
+    )
+
+    return visibleCategories + otherCategory
+}
+
+private fun List<BudgetSpendingUiModel>.toMonthlyChartCategories(): List<ChartCategoryUiModel> {
+    val total = sumOf { it.minorUnits }.takeIf { it > 0L } ?: 1L
+
+    return map { item ->
         ChartCategoryUiModel(
             name = item.name,
-            percent = amounts[index] / total * 100f,
+            percent = item.minorUnits.toFloat() / total * 100f,
             color = item.color,
         )
     }
 }
 
 private fun List<BudgetSpendingUiModel>.totalAmountLabel(): String {
-    val total = sumOf { it.amount.toAmountValue().toDouble() }
-    val formattedTotal = "%,.0f".format(Locale.ENGLISH, total)
-
-    return "RM $formattedTotal"
+    val total = sumOf { it.minorUnits }
+    return total.toMoneyLabel()
 }
 
 private fun List<BudgetSpendingUiModel>.withTotalSharePercents(): List<BudgetSpendingUiModel> {
-    val amounts = map { it.amount.toAmountValue() }
-    val total = amounts.sum().takeIf { it > 0f } ?: 1f
+    val total = sumOf { it.minorUnits }.takeIf { it > 0L } ?: 1L
 
-    return mapIndexed { index, item ->
-        item.copy(percent = (amounts[index] / total * 100f).toInt().coerceIn(0, 100))
+    return map { item ->
+        item.copy(percent = (item.minorUnits.toFloat() / total * 100f).toInt().coerceIn(0, 100))
     }
 }
 
@@ -720,179 +840,11 @@ private fun List<BudgetSpendingUiModel>.withMonthlyColors(): List<BudgetSpending
         item.copy(color = FilteredMonthColors[index % FilteredMonthColors.size])
     }
 
-private fun String.toAmountValue(): Float =
-    filter { it.isDigit() || it == '.' }.toFloatOrNull() ?: 0f
+private fun Long.toMoneyLabel(): String =
+    "RM ${AmountFormatter.formatPlainGrouped(Money(this))}"
 
-private val sampleExpenseChartCategories = listOf(
-    ChartCategoryUiModel("Rent", 28f, Color(0xFF3B82F6)),
-    ChartCategoryUiModel("Food", 20f, Color(0xFF2DD4BF)),
-    ChartCategoryUiModel("Transport", 16f, Color(0xFF7C3AED)),
-    ChartCategoryUiModel("Other", 36f, Color(0xFF64748B)),
-)
-
-private val sampleIncomeChartCategories = listOf(
-    ChartCategoryUiModel("Salary", 72f, Color(0xFF22C55E)),
-    ChartCategoryUiModel("Freelance", 14f, Color(0xFF38BDF8)),
-    ChartCategoryUiModel("Rewards", 9f, Color(0xFFA78BFA)),
-    ChartCategoryUiModel("Other", 5f, Color(0xFF64748B)),
-)
-
-private val sampleExpenseDetails = listOf(
-    BudgetSpendingUiModel(
-        name = "Rent",
-        amount = "RM 1,200",
-        percent = 49,
-        color = Color(0xFF93C5FD),
-        icon = Icons.Filled.Home,
-    ),
-    BudgetSpendingUiModel(
-        name = "Food",
-        amount = "RM 482",
-        percent = 20,
-        color = Color(0xFFFDE68A),
-        icon = Icons.Filled.ShoppingBag,
-    ),
-    BudgetSpendingUiModel(
-        name = "Transport",
-        amount = "RM 390",
-        percent = 16,
-        color = Color(0xFF86EFAC),
-        icon = Icons.Filled.DirectionsCar,
-    ),
-    BudgetSpendingUiModel(
-        name = "Subscription",
-        amount = "RM 438",
-        percent = 18,
-        color = Color(0xFFFACC15),
-        icon = Icons.Filled.Subscriptions,
-    ),
-    BudgetSpendingUiModel(
-        name = "Healthcare",
-        amount = "RM 244",
-        percent = 10,
-        color = Color(0xFFFB7185),
-        icon = Icons.Filled.LocalHospital,
-    ),
-    BudgetSpendingUiModel(
-        name = "Other",
-        amount = "RM 195",
-        percent = 8,
-        color = Color(0xFF94A3B8),
-        icon = Icons.Filled.Redeem,
-    ),
-)
-
-private val sampleIncomeSources = listOf(
-    BudgetSpendingUiModel(
-        name = "Salary",
-        amount = "RM 3,500",
-        percent = 94,
-        color = Color(0xFF86EFAC),
-        icon = Icons.Filled.Payments,
-    ),
-    BudgetSpendingUiModel(
-        name = "Freelance",
-        amount = "RM 223",
-        percent = 6,
-        color = Color(0xFF7DD3FC),
-        icon = Icons.Filled.Work,
-    ),
-    BudgetSpendingUiModel(
-        name = "Cashback",
-        amount = "RM 35",
-        percent = 1,
-        color = Color(0xFFC4B5FD),
-        icon = Icons.Filled.Redeem,
-    ),
-    BudgetSpendingUiModel(
-        name = "Interest",
-        amount = "RM 18",
-        percent = 1,
-        color = Color(0xFFFDE68A),
-        icon = Icons.Filled.Savings,
-    ),
-    BudgetSpendingUiModel(
-        name = "Investment Return",
-        amount = "RM 12",
-        percent = 1,
-        color = Color(0xFF5EEAD4),
-        icon = Icons.AutoMirrored.Filled.TrendingUp,
-    ),
-    BudgetSpendingUiModel(
-        name = "Other Income",
-        amount = "RM 8",
-        percent = 1,
-        color = Color(0xFF94A3B8),
-        icon = Icons.Filled.ShoppingBag,
-    ),
-)
-
-private val sampleCategoryMonthlyBreakdown = mapOf(
-    ChartMode.Expenses to mapOf(
-        "Rent" to listOf(
-            BudgetSpendingUiModel("July 2026", "RM 1,200", 100, Color(0xFF93C5FD), Icons.Filled.Home),
-            BudgetSpendingUiModel("June 2026", "RM 1,200", 100, Color(0xFF93C5FD), Icons.Filled.Home),
-            BudgetSpendingUiModel("May 2026", "RM 1,180", 98, Color(0xFF93C5FD), Icons.Filled.Home),
-        ),
-        "Food" to listOf(
-            BudgetSpendingUiModel("July 2026", "RM 482", 100, Color(0xFFFDE68A), Icons.Filled.ShoppingBag),
-            BudgetSpendingUiModel("June 2026", "RM 516", 107, Color(0xFFFDE68A), Icons.Filled.ShoppingBag),
-            BudgetSpendingUiModel("May 2026", "RM 438", 91, Color(0xFFFDE68A), Icons.Filled.ShoppingBag),
-        ),
-        "Transport" to listOf(
-            BudgetSpendingUiModel("July 2026", "RM 390", 100, Color(0xFF86EFAC), Icons.Filled.DirectionsCar),
-            BudgetSpendingUiModel("June 2026", "RM 342", 88, Color(0xFF86EFAC), Icons.Filled.DirectionsCar),
-            BudgetSpendingUiModel("May 2026", "RM 418", 107, Color(0xFF86EFAC), Icons.Filled.DirectionsCar),
-        ),
-        "Subscription" to listOf(
-            BudgetSpendingUiModel("July 2026", "RM 438", 100, Color(0xFFFACC15), Icons.Filled.Subscriptions),
-            BudgetSpendingUiModel("June 2026", "RM 299", 68, Color(0xFFFACC15), Icons.Filled.Subscriptions),
-            BudgetSpendingUiModel("May 2026", "RM 279", 64, Color(0xFFFACC15), Icons.Filled.Subscriptions),
-        ),
-        "Healthcare" to listOf(
-            BudgetSpendingUiModel("July 2026", "RM 244", 100, Color(0xFFFB7185), Icons.Filled.LocalHospital),
-            BudgetSpendingUiModel("June 2026", "RM 86", 35, Color(0xFFFB7185), Icons.Filled.LocalHospital),
-            BudgetSpendingUiModel("May 2026", "RM 132", 54, Color(0xFFFB7185), Icons.Filled.LocalHospital),
-        ),
-        "Other" to listOf(
-            BudgetSpendingUiModel("July 2026", "RM 195", 100, Color(0xFF94A3B8), Icons.Filled.Redeem),
-            BudgetSpendingUiModel("June 2026", "RM 168", 86, Color(0xFF94A3B8), Icons.Filled.Redeem),
-            BudgetSpendingUiModel("May 2026", "RM 211", 108, Color(0xFF94A3B8), Icons.Filled.Redeem),
-        ),
-    ),
-    ChartMode.Income to mapOf(
-        "Salary" to listOf(
-            BudgetSpendingUiModel("July 2026", "RM 3,500", 100, Color(0xFF86EFAC), Icons.Filled.Payments),
-            BudgetSpendingUiModel("June 2026", "RM 3,500", 100, Color(0xFF86EFAC), Icons.Filled.Payments),
-            BudgetSpendingUiModel("May 2026", "RM 3,500", 100, Color(0xFF86EFAC), Icons.Filled.Payments),
-        ),
-        "Freelance" to listOf(
-            BudgetSpendingUiModel("July 2026", "RM 223", 100, Color(0xFF7DD3FC), Icons.Filled.Work),
-            BudgetSpendingUiModel("June 2026", "RM 360", 100, Color(0xFF7DD3FC), Icons.Filled.Work),
-            BudgetSpendingUiModel("May 2026", "RM 140", 63, Color(0xFF7DD3FC), Icons.Filled.Work),
-        ),
-        "Cashback" to listOf(
-            BudgetSpendingUiModel("July 2026", "RM 35", 100, Color(0xFFC4B5FD), Icons.Filled.Redeem),
-            BudgetSpendingUiModel("June 2026", "RM 24", 69, Color(0xFFC4B5FD), Icons.Filled.Redeem),
-            BudgetSpendingUiModel("May 2026", "RM 42", 100, Color(0xFFC4B5FD), Icons.Filled.Redeem),
-        ),
-        "Interest" to listOf(
-            BudgetSpendingUiModel("July 2026", "RM 18", 100, Color(0xFFFDE68A), Icons.Filled.Savings),
-            BudgetSpendingUiModel("June 2026", "RM 17", 94, Color(0xFFFDE68A), Icons.Filled.Savings),
-            BudgetSpendingUiModel("May 2026", "RM 16", 89, Color(0xFFFDE68A), Icons.Filled.Savings),
-        ),
-        "Investment Return" to listOf(
-            BudgetSpendingUiModel("July 2026", "RM 12", 100, Color(0xFF5EEAD4), Icons.AutoMirrored.Filled.TrendingUp),
-            BudgetSpendingUiModel("June 2026", "RM 48", 100, Color(0xFF5EEAD4), Icons.AutoMirrored.Filled.TrendingUp),
-            BudgetSpendingUiModel("May 2026", "RM 0", 0, Color(0xFF5EEAD4), Icons.AutoMirrored.Filled.TrendingUp),
-        ),
-        "Other Income" to listOf(
-            BudgetSpendingUiModel("July 2026", "RM 8", 100, Color(0xFF94A3B8), Icons.Filled.ShoppingBag),
-            BudgetSpendingUiModel("June 2026", "RM 15", 100, Color(0xFF94A3B8), Icons.Filled.ShoppingBag),
-            BudgetSpendingUiModel("May 2026", "RM 10", 67, Color(0xFF94A3B8), Icons.Filled.ShoppingBag),
-        ),
-    ),
-)
+private fun java.time.Instant.toYearMonth(): YearMonth =
+    YearMonth.from(atZone(ZoneId.systemDefault()).toLocalDate())
 
 private val AppBackground = Color(0xFF08142A)
 private val Panel = Color(0xE0101A34)
@@ -901,6 +853,7 @@ private val AccentStroke = Color(0x3893C5FD)
 private val AccentBlue = Color(0xFF2563EB)
 private val MutedText = Color(0xFF91A7C5)
 private val SoftText = Color(0xFFD6E2F2)
+private const val MaxChartCategories = 5
 private val FilteredMonthColors = listOf(
     Color(0xFF60A5FA),
     Color(0xFF2DD4BF),
@@ -914,5 +867,5 @@ private val MonthFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("MMM
 @Preview
 @Composable
 private fun ChartsScreenPreview() {
-    ChartsRoute()
+    ChartsScreen(uiState = ChartsUiState(isLoading = false))
 }

@@ -1,5 +1,12 @@
 package com.budgettracker.feature.settings.settings
 
+import android.Manifest
+import android.content.ComponentName
+import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
+import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -61,6 +68,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -73,11 +81,16 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.budgettracker.core.data.backup.GoogleDriveBackupState
 import com.budgettracker.core.model.AmountInputMode
 import com.budgettracker.core.model.Category
 import com.budgettracker.core.model.Cashbook
@@ -89,6 +102,7 @@ import com.budgettracker.core.ui.category.MaterialIconOptions
 import com.budgettracker.core.ui.category.MaterialIconSections
 import com.budgettracker.core.ui.category.asCategoryUiModel
 import java.time.LocalDate
+import java.time.ZoneId
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 
@@ -99,12 +113,24 @@ fun SettingsRoute(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val amountInputMode by viewModel.amountInputMode.collectAsStateWithLifecycle()
+    val googleDriveBackupState by viewModel.googleDriveBackupState.collectAsStateWithLifecycle()
     val cashbookUiState by viewModel.cashbookUiState.collectAsStateWithLifecycle()
     val categories by viewModel.categories.collectAsStateWithLifecycle()
     val recurringTransactions by viewModel.recurringTransactions.collectAsStateWithLifecycle()
-    var googleDriveConnected by remember { mutableStateOf(false) }
-    var notificationReadingEnabled by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var notificationReadingEnabled by remember { mutableStateOf(context.isPaymentNotificationAccessEnabled()) }
     var screenMode by remember { mutableStateOf(SettingsScreenMode.Main) }
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission(),
+    ) {
+        context.openNotificationListenerSettings()
+    }
+    val googleDriveSignInLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        viewModel.handleGoogleDriveSignInResult(result.data)
+    }
     val importLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument(),
     ) { uri ->
@@ -115,16 +141,50 @@ fun SettingsRoute(
     ) { uri ->
         uri?.let(viewModel::exportCsv)
     }
+    DisposableEffect(context, lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                notificationReadingEnabled = context.isPaymentNotificationAccessEnabled()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
 
     when (screenMode) {
         SettingsScreenMode.Main -> {
             SettingsScreen(
                 uiState = uiState,
-                googleDriveConnected = googleDriveConnected,
+                googleDriveBackupState = googleDriveBackupState,
                 notificationReadingEnabled = notificationReadingEnabled,
                 amountInputMode = amountInputMode,
-                onGoogleDriveToggle = { googleDriveConnected = it },
-                onNotificationReadingToggle = { notificationReadingEnabled = it },
+                onGoogleDriveToggle = { enabled ->
+                    if (enabled) {
+                        if (googleDriveBackupState.isConnected) {
+                            viewModel.syncGoogleDriveBackup()
+                        } else {
+                            googleDriveSignInLauncher.launch(viewModel.googleDriveSignInIntent())
+                        }
+                    } else {
+                        viewModel.disconnectGoogleDrive()
+                    }
+                },
+                onNotificationReadingToggle = { enabled ->
+                    if (enabled) {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                            context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) !=
+                            PackageManager.PERMISSION_GRANTED
+                        ) {
+                            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                        } else {
+                            context.openNotificationListenerSettings()
+                        }
+                    } else {
+                        context.openNotificationListenerSettings()
+                    }
+                },
                 onAmountInputModeSelected = viewModel::updateAmountInputMode,
                 onCategorySettingsClick = { screenMode = SettingsScreenMode.Categories },
                 onRecurringTransactionsClick = { screenMode = SettingsScreenMode.RecurringTransactions },
@@ -186,7 +246,7 @@ fun SettingsRoute(
 @Composable
 private fun SettingsScreen(
     uiState: SettingsUiState,
-    googleDriveConnected: Boolean,
+    googleDriveBackupState: GoogleDriveBackupState,
     notificationReadingEnabled: Boolean,
     amountInputMode: AmountInputMode,
     onGoogleDriveToggle: (Boolean) -> Unit,
@@ -216,11 +276,12 @@ private fun SettingsScreen(
             }
             item {
                 SettingsHero(
-                    googleDriveConnected = googleDriveConnected,
+                    googleDriveConnected = googleDriveBackupState.isConnected,
                     notificationReadingEnabled = notificationReadingEnabled,
                 )
             }
-            uiState.message?.let { message ->
+            val statusMessage = uiState.message ?: googleDriveBackupState.message
+            statusMessage?.let { message ->
                 item {
                     StatusMessage(message = message)
                 }
@@ -230,12 +291,8 @@ private fun SettingsScreen(
                     SwitchSettingRow(
                         icon = Icons.Filled.Backup,
                         title = "Google Drive backup",
-                        subtitle = if (googleDriveConnected) {
-                            "Connected · Encrypted backup ready"
-                        } else {
-                            "Not connected · Tap to link Google Drive"
-                        },
-                        checked = googleDriveConnected,
+                        subtitle = googleDriveBackupState.backupSubtitle(),
+                        checked = googleDriveBackupState.isConnected,
                         onCheckedChange = onGoogleDriveToggle,
                     )
                 }
@@ -1698,7 +1755,42 @@ private fun LocalDate.toUtcMillis(): Long =
 private fun Long.toUtcLocalDate(): LocalDate =
     java.time.Instant.ofEpochMilli(this).atZone(ZoneOffset.UTC).toLocalDate()
 
+private fun GoogleDriveBackupState.backupSubtitle(): String = when {
+    isSyncing -> "Syncing backup to Google Drive..."
+    isConnected && pendingSync && !isOnline -> "Connected · Offline, will sync when online"
+    isConnected && pendingSync -> "Connected · Waiting to sync"
+    isConnected && lastSyncedAt != null -> {
+        val formatted = lastSyncedAt
+            ?.atZone(ZoneId.systemDefault())
+            ?.format(DriveSyncFormatter)
+        "Connected · Last synced $formatted"
+    }
+    isConnected -> accountEmail?.let { "Connected as $it · Tap to sync now" }
+        ?: "Connected · Tap to sync now"
+    else -> "Not connected · Tap to link Google Drive"
+}
+
+private fun Context.isPaymentNotificationAccessEnabled(): Boolean {
+    val enabledListeners = Settings.Secure.getString(
+        contentResolver,
+        "enabled_notification_listeners",
+    ).orEmpty()
+
+    return enabledListeners
+        .split(':')
+        .mapNotNull(ComponentName::unflattenFromString)
+        .any { it.packageName == packageName }
+}
+
+private fun Context.openNotificationListenerSettings() {
+    startActivity(
+        Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+    )
+}
+
 private val DateFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("MMM d, yyyy")
+private val DriveSyncFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("MMM d, HH:mm")
 
 private val AppBackground = Color(0xFF08142A)
 private val Panel = Color(0xE0101A34)
@@ -1713,7 +1805,7 @@ private val SoftText = Color(0xFFD6E2F2)
 private fun SettingsScreenPreview() {
     SettingsScreen(
         uiState = SettingsUiState(),
-        googleDriveConnected = false,
+        googleDriveBackupState = GoogleDriveBackupState(),
         notificationReadingEnabled = false,
         amountInputMode = AmountInputMode.NormalDecimal,
         onGoogleDriveToggle = {},

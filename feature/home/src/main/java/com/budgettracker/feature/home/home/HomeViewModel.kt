@@ -75,9 +75,9 @@ class HomeViewModel @Inject constructor(
             monthlySummary = MonthlySummaryUiModel(
                 year = currentMonth.year.toString(),
                 month = currentMonth.month.name.take(3).lowercase().replaceFirstChar(Char::titlecase),
-                expenses = AmountFormatter.formatPlain(summary.expense),
-                income = AmountFormatter.formatPlain(summary.income),
-                balance = AmountFormatter.formatPlain(summary.balance),
+                    expenses = AmountFormatter.formatPlainGrouped(summary.expense),
+                    income = AmountFormatter.formatPlainGrouped(summary.income),
+                    balance = AmountFormatter.formatPlainGrouped(summary.balance),
                 currency = summary.balance.currency.name,
                 cashbookName = cashbook?.name ?: "No cashbook",
             ),
@@ -190,6 +190,6 @@ private fun String.extractMinorUnits(): Long {
 }
 
 private fun Long.formatMinor(): String =
-    AmountFormatter.formatPlain(com.budgettracker.core.model.Money(this))
+    AmountFormatter.formatPlainGrouped(com.budgettracker.core.model.Money(this))
 
 private val HomeDayFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("EEE, MMM d")

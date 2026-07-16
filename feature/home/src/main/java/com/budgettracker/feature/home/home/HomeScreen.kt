@@ -404,7 +404,7 @@ private fun String.extractMinorUnits(): Long {
 }
 
 private fun Long.formatPlainAmount(): String =
-    AmountFormatter.formatPlain(Money(this))
+    AmountFormatter.formatPlainGrouped(Money(this))
 
 @Composable
 private fun BalanceMetricCard(

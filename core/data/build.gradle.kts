@@ -9,4 +9,10 @@ dependencies {
     implementation(project(":core:datastore"))
 
     implementation(libs.coroutines.core)
+    implementation(libs.androidx.room.runtime)
+    implementation(libs.google.api.client.android)
+    implementation(libs.google.api.services.drive)
+    implementation(libs.google.http.client.android)
+    implementation(libs.google.http.client.gson)
+    implementation(libs.play.services.auth)
 }

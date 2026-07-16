@@ -1,5 +1,6 @@
 package com.budgettracker.app
 
+import android.content.Intent
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -9,10 +10,13 @@ import androidx.navigation.compose.rememberNavController
 import com.budgettracker.app.navigation.AppNavHost
 
 @Composable
-fun BudgetTrackerApp() {
+fun BudgetTrackerApp(launchIntent: Intent? = null) {
     MaterialTheme {
         Surface(modifier = Modifier.fillMaxSize()) {
-            AppNavHost(navController = rememberNavController())
+            AppNavHost(
+                navController = rememberNavController(),
+                launchIntent = launchIntent,
+            )
         }
     }
 }

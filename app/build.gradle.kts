@@ -4,6 +4,17 @@ plugins {
     id("budgettracker.android.hilt")
 }
 
+android {
+    packaging {
+        resources {
+            excludes += setOf(
+                "META-INF/DEPENDENCIES",
+                "META-INF/INDEX.LIST",
+            )
+        }
+    }
+}
+
 dependencies {
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.runtime.ktx)

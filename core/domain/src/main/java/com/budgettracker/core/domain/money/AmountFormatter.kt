@@ -28,6 +28,12 @@ object AmountFormatter {
             .setScale(2)
             .toPlainString()
 
+    fun formatPlainGrouped(money: Money): String =
+        NumberFormat.getNumberInstance(Locale.US).apply {
+            minimumFractionDigits = 2
+            maximumFractionDigits = 2
+        }.format(BigDecimal(money.minorUnits).movePointLeft(2))
+
     fun formatDisplay(money: Money, signed: Boolean = false, isIncome: Boolean = false): String {
         val amount = NumberFormat.getNumberInstance(Locale.US).apply {
             minimumFractionDigits = 2

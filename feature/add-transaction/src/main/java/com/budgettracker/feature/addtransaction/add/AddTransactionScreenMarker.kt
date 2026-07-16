@@ -151,12 +151,27 @@ data class AddTransactionSaveResult(
 fun AddTransactionRoute(
     modifier: Modifier = Modifier,
     transactionId: String? = null,
+    prefillAmountInput: String? = null,
+    prefillTransactionType: TransactionType? = null,
+    prefillNote: String? = null,
     onCancel: () -> Unit = {},
     onSaved: () -> Unit = {},
     viewModel: AddTransactionViewModel = hiltViewModel(),
 ) {
-    LaunchedEffect(transactionId) {
-        viewModel.load(transactionId)
+    LaunchedEffect(transactionId, prefillAmountInput, prefillTransactionType, prefillNote) {
+        val prefill = prefillAmountInput
+            ?.takeIf { it.isNotBlank() }
+            ?.let { amount ->
+                AddTransactionPrefill(
+                    amountInput = amount,
+                    transactionType = prefillTransactionType ?: TransactionType.Expense,
+                    note = prefillNote.orEmpty(),
+                )
+            }
+        viewModel.load(
+            transactionId = transactionId,
+            prefill = prefill,
+        )
     }
 
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -983,7 +998,7 @@ private fun String.asAmountText(amountInputMode: AmountInputMode): String {
         ?.ifEmpty { "0" }
         ?: "0"
 
-    if (!contains('.')) return "$major.00"
+    if (!contains('.')) return "$major.00".withGroupedMajor()
 
     val minor = parts.getOrNull(1)
         ?.filter { it.isDigit() }
@@ -991,7 +1006,7 @@ private fun String.asAmountText(amountInputMode: AmountInputMode): String {
         .padEnd(2, '0')
         .take(2)
 
-    return "$major.$minor"
+    return "$major.$minor".withGroupedMajor()
 }
 
 private fun String.asAutoCentsAmountText(): String {
@@ -1004,8 +1019,23 @@ private fun String.asAutoCentsAmountText(): String {
     return if (major == 0L && minor == 0L) {
         "0.00"
     } else {
-        "$major.${minor.toString().padStart(2, '0')}"
+        "$major.${minor.toString().padStart(2, '0')}".withGroupedMajor()
     }
+}
+
+private fun String.withGroupedMajor(): String {
+    val parts = split('.', limit = 2)
+    val major = parts.firstOrNull().orEmpty()
+    val groupedMajor = major
+        .filter(Char::isDigit)
+        .ifBlank { "0" }
+        .reversed()
+        .chunked(3)
+        .joinToString(",")
+        .reversed()
+    val minor = parts.getOrNull(1) ?: return groupedMajor
+
+    return "$groupedMajor.$minor"
 }
 
 private fun String.asSavedAmountText(): String {
