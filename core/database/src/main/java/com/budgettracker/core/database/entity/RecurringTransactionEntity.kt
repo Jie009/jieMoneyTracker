@@ -32,6 +32,7 @@ import java.time.LocalDate
 data class RecurringTransactionEntity(
     @PrimaryKey val id: String,
     val cashbookId: String,
+    val name: String,
     val categoryId: String?,
     val amountMinor: Long,
     val currencyCode: String,
@@ -40,6 +41,8 @@ data class RecurringTransactionEntity(
     val interval: Int,
     val startDate: LocalDate,
     val endDate: LocalDate?,
+    val maxOccurrences: Int?,
+    val generatedOccurrences: Int,
     val nextRunDate: LocalDate,
     val requireConfirmation: Boolean,
     val isPaused: Boolean,

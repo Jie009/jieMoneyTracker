@@ -19,13 +19,13 @@ import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.budgettracker.core.data.recurring.RecurringTransactionProcessor
 import com.budgettracker.core.data.repository.CashbookRepository
 import com.budgettracker.core.data.repository.CategoryRepository
 import com.budgettracker.core.data.repository.TransactionRepository
 import com.budgettracker.core.domain.money.AmountFormatter
 import com.budgettracker.core.domain.report.MonthlySummaryCalculator
 import com.budgettracker.core.model.Category
-import com.budgettracker.core.model.Cashbook
 import com.budgettracker.core.model.Transaction
 import com.budgettracker.core.model.TransactionType
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -49,9 +49,9 @@ class HomeViewModel @Inject constructor(
     cashbookRepository: CashbookRepository,
     private val transactionRepository: TransactionRepository,
     categoryRepository: CategoryRepository,
+    private val recurringTransactionProcessor: RecurringTransactionProcessor,
 ) : ViewModel() {
-    private val cashbooks = cashbookRepository.observeActiveCashbooks()
-    private val selectedCashbook = cashbooks.map { cashbooks -> cashbooks.firstOrNull() }
+    private val selectedCashbook = cashbookRepository.observeSelectedCashbook()
     private val transactions = selectedCashbook.flatMapLatest { cashbook ->
         cashbook?.let { transactionRepository.observeTransactions(it.id) } ?: flowOf(emptyList())
     }
@@ -95,6 +95,12 @@ class HomeViewModel @Inject constructor(
         started = SharingStarted.WhileSubscribed(5_000),
         initialValue = HomeUiState(),
     )
+
+    init {
+        viewModelScope.launch {
+            recurringTransactionProcessor.processDueRecurringTransactions()
+        }
+    }
 
     fun deleteTransaction(id: String) {
         viewModelScope.launch {

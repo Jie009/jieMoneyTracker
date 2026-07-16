@@ -13,6 +13,7 @@ enum class RecurringFrequency {
 data class RecurringTransaction(
     val id: String,
     val cashbookId: String,
+    val name: String,
     val categoryId: String?,
     val amount: Money,
     val type: TransactionType,
@@ -20,6 +21,8 @@ data class RecurringTransaction(
     val interval: Int,
     val startDate: LocalDate,
     val endDate: LocalDate? = null,
+    val maxOccurrences: Int? = null,
+    val generatedOccurrences: Int = 0,
     val nextRunDate: LocalDate,
     val requireConfirmation: Boolean,
     val isPaused: Boolean = false,

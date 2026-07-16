@@ -121,8 +121,19 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.budgettracker.core.model.AmountInputMode
 import com.budgettracker.core.model.Category
 import com.budgettracker.core.model.TransactionType
+import com.budgettracker.core.ui.category.CategoryEditDialog
+import com.budgettracker.core.ui.category.CategoryManagerScreen
+import com.budgettracker.core.ui.category.CategoryUiModel
+import com.budgettracker.core.ui.category.MaterialIconOptions
+import com.budgettracker.core.ui.category.MaterialIconSections
+import com.budgettracker.core.ui.category.asCategoryUiModel
+import com.budgettracker.core.ui.category.defaultCategoryUiModels
+import com.budgettracker.core.ui.category.normalizedCategoryColor
+import com.budgettracker.core.ui.category.toCategoryColor
+import com.budgettracker.core.ui.category.withEditableCategory
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
@@ -149,12 +160,13 @@ fun AddTransactionRoute(
     }
 
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val amountInputMode by viewModel.amountInputMode.collectAsStateWithLifecycle()
     val persistedCategories by viewModel.categories.collectAsStateWithLifecycle()
     val categories = remember(persistedCategories, state.transactionType) {
         persistedCategories
             .filter { it.type == state.transactionType }
             .map { it.asCategoryUiModel() }
-            .ifEmpty { defaultCategories() }
+            .ifEmpty { defaultCategoryUiModels() }
     }
     val selectedCategoryId = state.selectedCategoryId
         ?.takeIf { selectedId -> categories.any { it.id == selectedId } }
@@ -167,11 +179,14 @@ fun AddTransactionRoute(
     var editingCategoryId by remember { mutableStateOf<String?>(null) }
     var categoryDraftName by remember { mutableStateOf("") }
     var categoryDraftIconName by remember { mutableStateOf(MaterialIconOptions.first().name) }
+    var categoryDraftColor by remember { mutableStateOf("#64748B") }
     val screenTitle = if (transactionId == null) "Add transaction" else "Edit transaction"
 
     fun saveTransaction() {
         viewModel.updateSelectedCategory(selectedCategoryId)
-        val normalizedAmount = state.amountInput.asAmountText().asSavedAmountText()
+        val normalizedAmount = state.amountInput
+            .asAmountText(amountInputMode)
+            .asSavedAmountText()
         if (normalizedAmount.isBlank()) return
         viewModel.updateAmountInput(normalizedAmount)
         viewModel.save(onSaved = onSaved)
@@ -181,6 +196,7 @@ fun AddTransactionRoute(
         editingCategoryId = category?.id
         categoryDraftName = category?.name.orEmpty()
         categoryDraftIconName = category?.icon?.name ?: MaterialIconOptions.first().name
+        categoryDraftColor = category?.color ?: "#64748B"
         showCategoryDialog = true
     }
 
@@ -189,6 +205,7 @@ fun AddTransactionRoute(
         editingCategoryId = null
         categoryDraftName = ""
         categoryDraftIconName = MaterialIconOptions.first().name
+        categoryDraftColor = "#64748B"
     }
 
     if (showCategoryManager) {
@@ -201,13 +218,15 @@ fun AddTransactionRoute(
                 showCategoryManager = false
             },
             onAddCategoryClick = { openCategoryDialog(null) },
+            onCategoryEditClick = ::openCategoryDialog,
             modifier = modifier,
         )
     } else {
         AddTransactionScreen(
             title = screenTitle,
             transactionType = state.transactionType,
-            amountText = state.amountInput.asAmountText(),
+            amountInputMode = amountInputMode,
+            amountText = state.amountInput.asAmountText(amountInputMode),
             categories = categories,
             selectedCategoryId = selectedCategoryId,
             noteText = state.note,
@@ -218,15 +237,27 @@ fun AddTransactionRoute(
             selectedDateMillis = state.dateMillis,
             onTransactionTypeChange = viewModel::updateType,
             onNumberClick = { value ->
-                viewModel.updateAmountInput(state.amountInput.appendAmountInput(value))
+                viewModel.updateAmountInput(
+                    if (amountInputMode == AmountInputMode.AutoCents) {
+                        state.amountInput.appendAutoCentsInput(value)
+                    } else {
+                        state.amountInput.appendAmountInput(value)
+                    },
+                )
             },
             onDecimalClick = {
-                if (!state.amountInput.contains('.')) {
+                if (amountInputMode == AmountInputMode.NormalDecimal && !state.amountInput.contains('.')) {
                     viewModel.updateAmountInput(if (state.amountInput.isEmpty()) "0." else "${state.amountInput}.")
                 }
             },
             onBackspaceClick = {
-                viewModel.updateAmountInput(state.amountInput.dropLast(1).trimEnd('.'))
+                viewModel.updateAmountInput(
+                    if (amountInputMode == AmountInputMode.AutoCents) {
+                        state.amountInput.dropLastAutoCentsInput()
+                    } else {
+                        state.amountInput.dropLast(1).trimEnd('.')
+                    },
+                )
             },
             onCategorySelected = viewModel::updateSelectedCategory,
             onManageCategoriesClick = { showCategoryManager = true },
@@ -253,9 +284,11 @@ fun AddTransactionRoute(
         CategoryEditDialog(
             title = if (editingCategoryId == null) "Add category" else "Edit category",
             name = categoryDraftName,
+            color = categoryDraftColor,
             selectedIconName = categoryDraftIconName,
             iconSections = MaterialIconSections,
             onNameChange = { categoryDraftName = it },
+            onColorChange = { categoryDraftColor = it },
             onIconSelected = { categoryDraftIconName = it },
             onDismiss = ::closeCategoryDialog,
             onSave = {
@@ -268,7 +301,15 @@ fun AddTransactionRoute(
                     viewModel.createCategory(
                         name = trimmedName,
                         icon = selectedIcon.name,
+                        color = categoryDraftColor.normalizedCategoryColor(),
                         type = state.transactionType,
+                    )
+                } else {
+                    viewModel.updateCategory(
+                        id = currentEditingId,
+                        name = trimmedName,
+                        icon = selectedIcon.name,
+                        color = categoryDraftColor.normalizedCategoryColor(),
                     )
                 }
                 closeCategoryDialog()
@@ -281,6 +322,7 @@ fun AddTransactionRoute(
 private fun AddTransactionScreen(
     title: String,
     transactionType: TransactionType,
+    amountInputMode: AmountInputMode,
     amountText: String,
     categories: List<CategoryUiModel>,
     selectedCategoryId: String,
@@ -347,6 +389,7 @@ private fun AddTransactionScreen(
             )
             Spacer(modifier = Modifier.height(10.dp))
             Keypad(
+                amountInputMode = amountInputMode,
                 onNumberClick = onNumberClick,
                 onDecimalClick = onDecimalClick,
                 onBackspaceClick = onBackspaceClick,
@@ -533,6 +576,7 @@ private fun CategorySection(
             CategoryChip(
                 label = category.name,
                 icon = category.icon.imageVector,
+                color = category.color,
                 selected = selectedCategoryId == category.id,
                 onClick = { onCategorySelected(category.id) },
                 modifier = Modifier.weight(1f),
@@ -564,20 +608,22 @@ private fun MenuIconButton(onClick: () -> Unit) {
 private fun CategoryChip(
     label: String,
     icon: ImageVector,
+    color: String,
     selected: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val categoryColor = color.toCategoryColor()
     Column(
         modifier = modifier
             .height(68.dp)
             .clip(RoundedCornerShape(18.dp))
             .border(
                 width = 1.dp,
-                color = if (selected) AccentLight else Stroke,
+                color = if (selected) categoryColor else Stroke,
                 shape = RoundedCornerShape(18.dp),
             )
-            .background(if (selected) SelectedPanel else Panel)
+            .background(if (selected) categoryColor.copy(alpha = 0.18f) else Panel)
             .clickable(onClick = onClick)
             .padding(horizontal = 6.dp, vertical = 9.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -586,13 +632,13 @@ private fun CategoryChip(
         Icon(
             imageVector = icon,
             contentDescription = label,
-            tint = Color.White.copy(alpha = if (selected) 1f else 0.78f),
+            tint = if (selected) categoryColor else categoryColor.copy(alpha = 0.9f),
             modifier = Modifier
                 .size(23.dp),
         )
         Text(
             text = label,
-            color = Color.White,
+            color = if (selected) Color.White else Color(0xFFD6E2F2),
             fontSize = 11.sp,
             lineHeight = 12.sp,
             fontWeight = FontWeight.Bold,
@@ -601,305 +647,6 @@ private fun CategoryChip(
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.fillMaxWidth(),
         )
-    }
-}
-
-@Composable
-private fun CategoryManagerScreen(
-    categories: List<CategoryUiModel>,
-    selectedCategoryId: String,
-    onBack: () -> Unit,
-    onCategoryClick: (CategoryUiModel) -> Unit,
-    onAddCategoryClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Box(
-        modifier = modifier
-            .fillMaxSize()
-            .background(AppBackground),
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .statusBarsPadding()
-                .padding(horizontal = 18.dp)
-                .padding(top = 18.dp, bottom = 18.dp),
-        ) {
-            CategoryManagerHeader(onBack = onBack)
-            Spacer(modifier = Modifier.height(16.dp))
-            LazyColumn(
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-                modifier = Modifier.fillMaxSize(),
-            ) {
-                items(categories, key = { it.id }) { category ->
-                    CategoryManagerRow(
-                        category = category,
-                        selected = category.id == selectedCategoryId,
-                        onClick = { onCategoryClick(category) },
-                    )
-                }
-            }
-        }
-
-        Box(
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(end = 24.dp, bottom = 24.dp)
-                .size(58.dp)
-                .clip(CircleShape)
-                .background(Accent)
-                .clickable(onClick = onAddCategoryClick),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                imageVector = Icons.Filled.Add,
-                contentDescription = "Add category",
-                tint = Color.White,
-                modifier = Modifier.size(28.dp),
-            )
-        }
-    }
-}
-
-@Composable
-private fun CategoryManagerHeader(onBack: () -> Unit) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween,
-    ) {
-        RoundIconButton(
-            icon = Icons.AutoMirrored.Filled.ArrowBack,
-            contentDescription = "Back",
-            onClick = onBack,
-        )
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(
-                text = "Tap to select",
-                color = MutedText,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold,
-            )
-            Text(
-                text = "Category",
-                color = Color.White,
-                fontSize = 22.sp,
-                lineHeight = 24.sp,
-                fontWeight = FontWeight.Black,
-            )
-        }
-        RoundIconButton(
-            icon = Icons.Filled.Edit,
-            contentDescription = "Edit categories",
-            onClick = {},
-        )
-    }
-}
-
-@Composable
-private fun RoundIconButton(
-    icon: ImageVector,
-    contentDescription: String,
-    onClick: () -> Unit,
-) {
-    Box(
-        modifier = Modifier
-            .size(44.dp)
-            .clip(RoundedCornerShape(18.dp))
-            .border(1.dp, Stroke, RoundedCornerShape(18.dp))
-            .background(ButtonPanel.copy(alpha = 0.78f))
-            .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = contentDescription,
-            tint = Color.White,
-            modifier = Modifier.size(24.dp),
-        )
-    }
-}
-
-@Composable
-private fun CategoryManagerRow(
-    category: CategoryUiModel,
-    selected: Boolean,
-    onClick: () -> Unit,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(66.dp)
-            .clip(RoundedCornerShape(18.dp))
-            .border(
-                width = 1.dp,
-                color = if (selected) AccentLight else Stroke,
-                shape = RoundedCornerShape(18.dp),
-            )
-            .background(if (selected) SelectedPanel else Panel)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(
-            modifier = Modifier
-                .size(42.dp)
-                .clip(RoundedCornerShape(14.dp))
-                .background(ButtonPanel),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                imageVector = category.icon.imageVector,
-                contentDescription = category.name,
-                tint = Color.White,
-                modifier = Modifier.size(23.dp),
-            )
-        }
-        Spacer(modifier = Modifier.width(12.dp))
-        Text(
-            text = category.name,
-            color = Color.White,
-            fontSize = 16.sp,
-            fontWeight = FontWeight.Black,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
-        )
-        Icon(
-            imageVector = if (selected) Icons.Filled.Check else Icons.Filled.Edit,
-            contentDescription = if (selected) "Selected" else "Edit",
-            tint = Color.White,
-            modifier = Modifier.size(22.dp),
-        )
-    }
-}
-
-@Composable
-private fun CategoryEditDialog(
-    title: String,
-    name: String,
-    selectedIconName: String,
-    iconSections: List<MaterialIconSection>,
-    onNameChange: (String) -> Unit,
-    onIconSelected: (String) -> Unit,
-    onDismiss: () -> Unit,
-    onSave: () -> Unit,
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        containerColor = Panel,
-        titleContentColor = Color.White,
-        textContentColor = Color.White,
-        title = {
-            Text(
-                text = title,
-                fontWeight = FontWeight.Bold,
-            )
-        },
-        text = {
-            Column {
-                TextField(
-                    value = name,
-                    onValueChange = onNameChange,
-                    modifier = Modifier.fillMaxWidth(),
-                    placeholder = { Text("Category name") },
-                    singleLine = true,
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-                Text(
-                    text = "Material icon",
-                    color = MutedText,
-                    fontWeight = FontWeight.Bold,
-                )
-                Spacer(modifier = Modifier.height(10.dp))
-                IconPicker(
-                    iconSections = iconSections,
-                    selectedIconName = selectedIconName,
-                    onIconSelected = onIconSelected,
-                )
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onSave) {
-                Text("Save")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel")
-            }
-        },
-    )
-}
-
-@Composable
-private fun IconPicker(
-    iconSections: List<MaterialIconSection>,
-    selectedIconName: String,
-    onIconSelected: (String) -> Unit,
-) {
-    LazyColumn(
-        modifier = Modifier.heightIn(max = 360.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        items(iconSections, key = { it.title }) { section ->
-            Text(
-                text = section.title,
-                color = Color.White,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Black,
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            IconSectionGrid(
-                iconOptions = section.icons,
-                selectedIconName = selectedIconName,
-                onIconSelected = onIconSelected,
-            )
-        }
-    }
-}
-
-@Composable
-private fun IconSectionGrid(
-    iconOptions: List<MaterialIconOption>,
-    selectedIconName: String,
-    onIconSelected: (String) -> Unit,
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        iconOptions.chunked(4).forEach { rowOptions ->
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                rowOptions.forEach { option ->
-                    val selected = option.name == selectedIconName
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(52.dp)
-                            .clip(RoundedCornerShape(14.dp))
-                            .border(
-                                width = 1.dp,
-                                color = if (selected) AccentLight else Stroke,
-                                shape = RoundedCornerShape(14.dp),
-                            )
-                            .background(if (selected) SelectedPanel else ButtonPanel)
-                            .clickable { onIconSelected(option.name) },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(
-                            imageVector = option.imageVector,
-                            contentDescription = option.label,
-                            tint = Color.White,
-                            modifier = Modifier.size(24.dp),
-                        )
-                    }
-                }
-                repeat(4 - rowOptions.size) {
-                    Spacer(modifier = Modifier.weight(1f))
-                }
-            }
-        }
     }
 }
 
@@ -1042,6 +789,7 @@ private fun TransactionDateDialog(
 
 @Composable
 private fun Keypad(
+    amountInputMode: AmountInputMode,
     onNumberClick: (String) -> Unit,
     onDecimalClick: () -> Unit,
     onBackspaceClick: () -> Unit,
@@ -1071,12 +819,20 @@ private fun Keypad(
                 values = listOf("7", "8", "9"),
                 onValueClick = onNumberClick,
             )
-            KeypadRow(
-                values = listOf(".", "0", "00"),
-                onValueClick = { value ->
-                    if (value == ".") onDecimalClick() else onNumberClick(value)
-                },
-            )
+            if (amountInputMode == AmountInputMode.AutoCents) {
+                KeypadRow(
+                    values = listOf("0", "00"),
+                    weights = listOf(2f, 1f),
+                    onValueClick = onNumberClick,
+                )
+            } else {
+                KeypadRow(
+                    values = listOf(".", "0", "00"),
+                    onValueClick = { value ->
+                        if (value == ".") onDecimalClick() else onNumberClick(value)
+                    },
+                )
+            }
         }
         Column(
             modifier = Modifier
@@ -1101,6 +857,7 @@ private fun Keypad(
 @Composable
 private fun KeypadRow(
     values: List<String>,
+    weights: List<Float> = values.map { 1f },
     onValueClick: (String) -> Unit,
     trailing: @Composable (RowScope.() -> Unit)? = null,
 ) {
@@ -1108,12 +865,16 @@ private fun KeypadRow(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        values.forEach { value ->
-            KeypadButton(
-                text = value,
-                onClick = { onValueClick(value) },
-                modifier = Modifier.weight(1f),
-            )
+        values.forEachIndexed { index, value ->
+            if (value.isBlank()) {
+                Spacer(modifier = Modifier.weight(weights.getOrElse(index) { 1f }))
+            } else {
+                KeypadButton(
+                    text = value,
+                    onClick = { onValueClick(value) },
+                    modifier = Modifier.weight(weights.getOrElse(index) { 1f }),
+                )
+            }
         }
         trailing?.invoke(this)
     }
@@ -1211,222 +972,9 @@ private fun PillButton(
     }
 }
 
-private data class CategoryUiModel(
-    val id: String,
-    val name: String,
-    val description: String,
-    val icon: MaterialIconOption,
-)
-
-private data class MaterialIconOption(
-    val name: String,
-    val label: String,
-    val imageVector: ImageVector,
-)
-
-private data class MaterialIconSection(
-    val title: String,
-    val icons: List<MaterialIconOption>,
-)
-
-private fun Category.asCategoryUiModel(): CategoryUiModel =
-    CategoryUiModel(
-        id = id,
-        name = name,
-        description = defaultNameKey ?: "Custom category",
-        icon = MaterialIconOptions.firstOrNull { it.name == icon }
-            ?: MaterialIconOptions.first { it.name == "category" },
-    )
-
-private fun defaultCategories(): List<CategoryUiModel> = listOf(
-    CategoryUiModel(
-        id = "petrol",
-        name = "Petrol",
-        description = "Fuel and vehicle cost",
-        icon = MaterialIconOptions.first { it.name == "local_gas_station" },
-    ),
-    CategoryUiModel(
-        id = "food",
-        name = "Food",
-        description = "Meals, drinks, groceries",
-        icon = MaterialIconOptions.first { it.name == "restaurant" },
-    ),
-    CategoryUiModel(
-        id = "online_shopping",
-        name = "Online Shopping",
-        description = "Shopping and parcels",
-        icon = MaterialIconOptions.first { it.name == "shopping_bag" },
-    ),
-    CategoryUiModel(
-        id = "transport",
-        name = "Transport",
-        description = "Ride, toll, parking",
-        icon = MaterialIconOptions.first { it.name == "directions_car" },
-    ),
-    CategoryUiModel(
-        id = "rental_fee",
-        name = "Rental Fee",
-        description = "House and fixed living cost",
-        icon = MaterialIconOptions.first { it.name == "home" },
-    ),
-    CategoryUiModel(
-        id = "doctor",
-        name = "Doctor",
-        description = "Health and clinic",
-        icon = MaterialIconOptions.first { it.name == "medical_services" },
-    ),
-)
-
-private fun List<CategoryUiModel>.withEditableCategory(categoryName: String?): List<CategoryUiModel> {
-    val normalizedCategoryName = categoryName?.trim().orEmpty()
-    if (normalizedCategoryName.isBlank()) return this
-    if (any { it.name.equals(normalizedCategoryName, ignoreCase = true) }) return this
-
-    return this + CategoryUiModel(
-        id = "editing_${normalizedCategoryName.lowercase().replace(' ', '_')}",
-        name = normalizedCategoryName,
-        description = "Current category",
-        icon = MaterialIconOptions.first { it.name == "category" },
-    )
-}
-
-private val MaterialIconSections = listOf(
-    MaterialIconSection(
-        title = "Entertainment",
-        icons = listOf(
-            MaterialIconOption("movie", "Movie", Icons.Filled.Movie),
-            MaterialIconOption("theaters", "Theaters", Icons.Filled.Theaters),
-            MaterialIconOption("music_note", "Music", Icons.Filled.MusicNote),
-            MaterialIconOption("sports_esports", "Games", Icons.Filled.SportsEsports),
-        ),
-    ),
-    MaterialIconSection(
-        title = "Food",
-        icons = listOf(
-            MaterialIconOption("restaurant", "Restaurant", Icons.Filled.Restaurant),
-            MaterialIconOption("fastfood", "Fast food", Icons.Filled.Fastfood),
-            MaterialIconOption("local_cafe", "Cafe", Icons.Filled.LocalCafe),
-            MaterialIconOption("local_pizza", "Pizza", Icons.Filled.LocalPizza),
-            MaterialIconOption("bakery_dining", "Bakery", Icons.Filled.BakeryDining),
-        ),
-    ),
-    MaterialIconSection(
-        title = "Shopping",
-        icons = listOf(
-            MaterialIconOption("shopping_bag", "Shopping bag", Icons.Filled.ShoppingBag),
-            MaterialIconOption("shopping_cart", "Shopping cart", Icons.Filled.ShoppingCart),
-            MaterialIconOption("storefront", "Storefront", Icons.Filled.Storefront),
-            MaterialIconOption("local_mall", "Mall", Icons.Filled.LocalMall),
-            MaterialIconOption("sell", "Sale", Icons.Filled.Sell),
-        ),
-    ),
-    MaterialIconSection(
-        title = "Life",
-        icons = listOf(
-            MaterialIconOption("home", "Home", Icons.Filled.Home),
-            MaterialIconOption("lightbulb", "Utilities", Icons.Filled.Lightbulb),
-            MaterialIconOption("pets", "Pets", Icons.Filled.Pets),
-            MaterialIconOption("subscriptions", "Subscriptions", Icons.Filled.Subscriptions),
-        ),
-    ),
-    MaterialIconSection(
-        title = "Personal",
-        icons = listOf(
-            MaterialIconOption("person", "Personal", Icons.Filled.Person),
-            MaterialIconOption("face", "Beauty", Icons.Filled.Face),
-            MaterialIconOption("favorite", "Love", Icons.Filled.Favorite),
-            MaterialIconOption("star", "Favorite", Icons.Filled.Star),
-        ),
-    ),
-    MaterialIconSection(
-        title = "Education",
-        icons = listOf(
-            MaterialIconOption("school", "School", Icons.Filled.School),
-            MaterialIconOption("menu_book", "Books", Icons.AutoMirrored.Filled.MenuBook),
-            MaterialIconOption("local_library", "Library", Icons.Filled.LocalLibrary),
-            MaterialIconOption("calculate", "Tuition", Icons.Filled.Calculate),
-            MaterialIconOption("science", "Science", Icons.Filled.Science),
-        ),
-    ),
-    MaterialIconSection(
-        title = "Festival",
-        icons = listOf(
-            MaterialIconOption("cake", "Cake", Icons.Filled.Cake),
-            MaterialIconOption("redeem", "Gift", Icons.Filled.Redeem),
-            MaterialIconOption("card_giftcard", "Card gift", Icons.Filled.CardGiftcard),
-            MaterialIconOption("emoji_events", "Prize", Icons.Filled.EmojiEvents),
-        ),
-    ),
-    MaterialIconSection(
-        title = "Sports",
-        icons = listOf(
-            MaterialIconOption("fitness_center", "Gym", Icons.Filled.FitnessCenter),
-            MaterialIconOption("sports_soccer", "Soccer", Icons.Filled.SportsSoccer),
-            MaterialIconOption("sports_basketball", "Basketball", Icons.Filled.SportsBasketball),
-            MaterialIconOption("directions_run", "Running", Icons.AutoMirrored.Filled.DirectionsRun),
-        ),
-    ),
-    MaterialIconSection(
-        title = "Office",
-        icons = listOf(
-            MaterialIconOption("work", "Work", Icons.Filled.Work),
-            MaterialIconOption("business_center", "Business", Icons.Filled.BusinessCenter),
-            MaterialIconOption("laptop_mac", "Laptop", Icons.Filled.LaptopMac),
-            MaterialIconOption("print", "Print", Icons.Filled.Print),
-        ),
-    ),
-    MaterialIconSection(
-        title = "Transportation",
-        icons = listOf(
-            MaterialIconOption("directions_car", "Car", Icons.Filled.DirectionsCar),
-            MaterialIconOption("local_gas_station", "Petrol", Icons.Filled.LocalGasStation),
-            MaterialIconOption("local_parking", "Parking", Icons.Filled.LocalParking),
-            MaterialIconOption("train", "Train", Icons.Filled.Train),
-            MaterialIconOption("flight", "Flight", Icons.Filled.Flight),
-        ),
-    ),
-    MaterialIconSection(
-        title = "Health",
-        icons = listOf(
-            MaterialIconOption("medical_services", "Medical", Icons.Filled.MedicalServices),
-            MaterialIconOption("local_hospital", "Hospital", Icons.Filled.LocalHospital),
-            MaterialIconOption("healing", "Clinic", Icons.Filled.Healing),
-            MaterialIconOption("monitor_heart", "Health", Icons.Filled.MonitorHeart),
-        ),
-    ),
-    MaterialIconSection(
-        title = "Travel",
-        icons = listOf(
-            MaterialIconOption("flight_takeoff", "Flight takeoff", Icons.Filled.FlightTakeoff),
-            MaterialIconOption("hotel", "Hotel", Icons.Filled.Hotel),
-            MaterialIconOption("beach_access", "Beach", Icons.Filled.BeachAccess),
-        ),
-    ),
-    MaterialIconSection(
-        title = "Finance",
-        icons = listOf(
-            MaterialIconOption("payments", "Payments", Icons.Filled.Payments),
-            MaterialIconOption("account_balance_wallet", "Wallet", Icons.Filled.AccountBalanceWallet),
-            MaterialIconOption("account_balance", "Bank", Icons.Filled.AccountBalance),
-            MaterialIconOption("credit_card", "Credit card", Icons.Filled.CreditCard),
-            MaterialIconOption("savings", "Savings", Icons.Filled.Savings),
-            MaterialIconOption("undo", "Refund", Icons.AutoMirrored.Filled.Undo),
-        ),
-    ),
-    MaterialIconSection(
-        title = "Others",
-        icons = listOf(
-            MaterialIconOption("category", "Category", Icons.Filled.Category),
-            MaterialIconOption("more_horiz", "Other", Icons.Filled.MoreHoriz),
-            MaterialIconOption("help_outline", "Help", Icons.AutoMirrored.Filled.HelpOutline),
-        ),
-    ),
-)
-
-private val MaterialIconOptions = MaterialIconSections.flatMap { it.icons }
-
-private fun String.asAmountText(): String {
-    if (isEmpty()) return ""
+private fun String.asAmountText(amountInputMode: AmountInputMode): String {
+    if (amountInputMode == AmountInputMode.AutoCents) return asAutoCentsAmountText()
+    if (isEmpty()) return "0.00"
 
     val parts = split('.', limit = 2)
     val major = parts.firstOrNull()
@@ -1435,14 +983,29 @@ private fun String.asAmountText(): String {
         ?.ifEmpty { "0" }
         ?: "0"
 
-    if (!contains('.')) return major
+    if (!contains('.')) return "$major.00"
 
     val minor = parts.getOrNull(1)
         ?.filter { it.isDigit() }
         .orEmpty()
+        .padEnd(2, '0')
         .take(2)
 
     return "$major.$minor"
+}
+
+private fun String.asAutoCentsAmountText(): String {
+    val digits = filter(Char::isDigit)
+        .trimStart('0')
+    val minorUnits = digits.toLongOrNull() ?: 0L
+    val major = minorUnits / 100
+    val minor = minorUnits % 100
+
+    return if (major == 0L && minor == 0L) {
+        "0.00"
+    } else {
+        "$major.${minor.toString().padStart(2, '0')}"
+    }
 }
 
 private fun String.asSavedAmountText(): String {
@@ -1487,6 +1050,21 @@ private fun String.appendAmountInput(value: String): String {
     }
 }
 
+private fun String.appendAutoCentsInput(value: String): String {
+    val currentDigits = filter(Char::isDigit).trimStart('0')
+    val newDigits = (currentDigits + value.filter(Char::isDigit))
+        .trimStart('0')
+        .take(MaxAutoCentsInputDigits)
+    return newDigits.asAutoCentsAmountText()
+}
+
+private fun String.dropLastAutoCentsInput(): String {
+    val newDigits = filter(Char::isDigit)
+        .trimStart('0')
+        .dropLast(1)
+    return newDigits.asAutoCentsAmountText()
+}
+
 private fun todayUtcMillis(): Long =
     LocalDate.now().atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
 
@@ -1498,6 +1076,7 @@ private fun Long.asDateLabel(): String {
 }
 
 private const val MaxAmountInputLength = 9
+private const val MaxAutoCentsInputDigits = 11
 
 private val DateLabelFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("MMM d, yyyy")
 

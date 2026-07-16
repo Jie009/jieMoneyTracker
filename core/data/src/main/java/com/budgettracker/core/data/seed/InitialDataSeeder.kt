@@ -32,6 +32,10 @@ class InitialDataSeeder @Inject constructor(
             ),
         )
 
+        seedDefaultCategories(cashbookId = cashbookId, now = now)
+    }
+
+    suspend fun seedDefaultCategories(cashbookId: String, now: Instant = Instant.now()) {
         categoryRepository.upsertCategories(defaultCategories(cashbookId = cashbookId, now = now))
     }
 
@@ -80,7 +84,7 @@ class InitialDataSeeder @Inject constructor(
         sortOrder: Int,
         now: Instant,
     ): Category = Category(
-        id = "category_default_${type.name.lowercase()}_$key",
+        id = "category_${cashbookId}_${type.name.lowercase()}_$key",
         cashbookId = cashbookId,
         name = name,
         defaultNameKey = "category_${type.name.lowercase()}_$key",

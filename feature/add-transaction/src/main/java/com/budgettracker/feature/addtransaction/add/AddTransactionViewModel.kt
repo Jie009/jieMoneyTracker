@@ -5,8 +5,10 @@ import androidx.lifecycle.viewModelScope
 import com.budgettracker.core.data.repository.CashbookRepository
 import com.budgettracker.core.data.repository.CategoryRepository
 import com.budgettracker.core.data.repository.TransactionRepository
+import com.budgettracker.core.data.repository.UserPreferencesRepository
 import com.budgettracker.core.domain.money.AmountFormatter
 import com.budgettracker.core.domain.transaction.TransactionValidator
+import com.budgettracker.core.model.AmountInputMode
 import com.budgettracker.core.model.Category
 import com.budgettracker.core.model.CurrencyCode
 import com.budgettracker.core.model.Money
@@ -14,6 +16,7 @@ import com.budgettracker.core.model.Transaction
 import com.budgettracker.core.model.TransactionSource
 import com.budgettracker.core.model.TransactionType
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -31,14 +34,23 @@ import java.util.UUID
 import javax.inject.Inject
 
 @HiltViewModel
+@OptIn(ExperimentalCoroutinesApi::class)
 class AddTransactionViewModel @Inject constructor(
     private val cashbookRepository: CashbookRepository,
     private val categoryRepository: CategoryRepository,
     private val transactionRepository: TransactionRepository,
+    userPreferencesRepository: UserPreferencesRepository,
 ) : ViewModel() {
     private val cashbookId = MutableStateFlow<String?>(null)
     private val _uiState = MutableStateFlow(AddTransactionUiState())
     val uiState: StateFlow<AddTransactionUiState> = _uiState.asStateFlow()
+
+    val amountInputMode: StateFlow<AmountInputMode> = userPreferencesRepository.observeAmountInputMode()
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = AmountInputMode.NormalDecimal,
+        )
 
     val categories = cashbookId.flatMapLatest { id ->
         id?.let { categoryRepository.observeCategories(it) } ?: flowOf(emptyList())
@@ -52,7 +64,7 @@ class AddTransactionViewModel @Inject constructor(
         if (_uiState.value.loadedTransactionId == transactionId && _uiState.value.cashbookId != null) return
 
         viewModelScope.launch {
-            val cashbook = cashbookRepository.getActiveCashbooks().firstOrNull() ?: return@launch
+            val cashbook = cashbookRepository.getSelectedCashbook() ?: return@launch
             cashbookId.value = cashbook.id
 
             val existingTransaction = transactionId?.let { transactionRepository.getTransaction(it) }
@@ -94,7 +106,7 @@ class AddTransactionViewModel @Inject constructor(
         _uiState.update { state -> state.copy(dateMillis = dateMillis) }
     }
 
-    fun createCategory(name: String, icon: String, type: TransactionType) {
+    fun createCategory(name: String, icon: String, color: String, type: TransactionType) {
         val cashbookId = _uiState.value.cashbookId ?: return
         val trimmedName = name.trim()
         if (trimmedName.isBlank()) return
@@ -107,13 +119,30 @@ class AddTransactionViewModel @Inject constructor(
                 name = trimmedName,
                 type = type,
                 icon = icon,
-                color = "#64748B",
+                color = color,
                 sortOrder = categories.value.size,
                 createdAt = now,
                 updatedAt = now,
             )
             categoryRepository.upsertCategory(category)
             _uiState.update { state -> state.copy(selectedCategoryId = category.id) }
+        }
+    }
+
+    fun updateCategory(id: String, name: String, icon: String, color: String) {
+        val trimmedName = name.trim()
+        if (trimmedName.isBlank()) return
+        val existingCategory = categories.value.firstOrNull { it.id == id } ?: return
+
+        viewModelScope.launch {
+            categoryRepository.upsertCategory(
+                existingCategory.copy(
+                    name = trimmedName,
+                    icon = icon,
+                    color = color,
+                    updatedAt = Instant.now(),
+                ),
+            )
         }
     }
 

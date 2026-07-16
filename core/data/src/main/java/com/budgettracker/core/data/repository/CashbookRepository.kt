@@ -6,7 +6,10 @@ import java.time.Instant
 
 interface CashbookRepository {
     fun observeActiveCashbooks(): Flow<List<Cashbook>>
+    fun observeSelectedCashbook(): Flow<Cashbook?>
     suspend fun getActiveCashbooks(): List<Cashbook>
+    suspend fun getSelectedCashbook(): Cashbook?
+    fun selectCashbook(id: String)
     fun observeCashbook(id: String): Flow<Cashbook?>
     suspend fun upsertCashbook(cashbook: Cashbook)
     suspend fun hasAnyCashbook(): Boolean

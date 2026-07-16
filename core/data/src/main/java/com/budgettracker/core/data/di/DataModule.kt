@@ -5,11 +5,13 @@ import com.budgettracker.core.data.repository.CashbookRepository
 import com.budgettracker.core.data.repository.CategoryRepository
 import com.budgettracker.core.data.repository.RecurringTransactionRepository
 import com.budgettracker.core.data.repository.TransactionRepository
+import com.budgettracker.core.data.repository.UserPreferencesRepository
 import com.budgettracker.core.data.repository.impl.OfflineBudgetRepository
 import com.budgettracker.core.data.repository.impl.OfflineCashbookRepository
 import com.budgettracker.core.data.repository.impl.OfflineCategoryRepository
 import com.budgettracker.core.data.repository.impl.OfflineRecurringTransactionRepository
 import com.budgettracker.core.data.repository.impl.OfflineTransactionRepository
+import com.budgettracker.core.data.repository.impl.SharedPreferencesUserPreferencesRepository
 import dagger.Binds
 import dagger.Module
 import dagger.hilt.InstallIn
@@ -48,4 +50,10 @@ abstract class DataModule {
     abstract fun bindBudgetRepository(
         repository: OfflineBudgetRepository,
     ): BudgetRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindUserPreferencesRepository(
+        repository: SharedPreferencesUserPreferencesRepository,
+    ): UserPreferencesRepository
 }
