@@ -5,6 +5,7 @@ import androidx.room.Query
 import androidx.room.Upsert
 import com.budgettracker.core.database.entity.RecurringTransactionEntity
 import kotlinx.coroutines.flow.Flow
+import java.time.Instant
 import java.time.LocalDate
 
 @Dao
@@ -29,6 +30,22 @@ interface RecurringTransactionDao {
 
     @Upsert
     suspend fun upsertRecurringTransaction(recurringTransaction: RecurringTransactionEntity)
+
+    @Query("SELECT COUNT(*) FROM recurring_transactions WHERE categoryId = :categoryId")
+    suspend fun countRecurringTransactionsByCategory(categoryId: String): Int
+
+    @Query(
+        """
+        UPDATE recurring_transactions
+        SET categoryId = :replacementCategoryId, updatedAt = :updatedAt
+        WHERE categoryId = :categoryId
+        """,
+    )
+    suspend fun replaceCategory(
+        categoryId: String,
+        replacementCategoryId: String,
+        updatedAt: Instant,
+    )
 
     @Query("DELETE FROM recurring_transactions WHERE id = :id")
     suspend fun deleteRecurringTransaction(id: String)

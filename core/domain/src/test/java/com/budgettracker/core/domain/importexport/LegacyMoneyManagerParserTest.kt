@@ -44,4 +44,33 @@ class LegacyMoneyManagerParserTest {
         assertTrue(preview.errors.isEmpty())
         assertEquals("lunch, drink", preview.records.single().note)
     }
+
+    @Test
+    fun csvWriter_outputsImportableCsv() {
+        val csv = LegacyMoneyManagerCsvWriter.write(
+            rows = listOf(
+                listOf("Category", "Note", "Amount", "Currency", "Type", "Account", "Date", "Photos"),
+                listOf(
+                    "Uncategorized",
+                    "parking, mall",
+                    "3.50",
+                    "MYR",
+                    "Expenses",
+                    "Daily",
+                    "Jul 18, 2026",
+                    "",
+                ),
+            ),
+        )
+
+        val preview = LegacyMoneyManagerCsvReader.read(csv)
+
+        assertTrue(preview.errors.isEmpty())
+        assertEquals(1, preview.records.size)
+        assertEquals("Uncategorized", preview.records.single().categoryName)
+        assertEquals("parking, mall", preview.records.single().note)
+        assertEquals(350L, preview.records.single().amount.minorUnits)
+        assertEquals(TransactionType.Expense, preview.records.single().type)
+        assertEquals(LocalDate.of(2026, 7, 18), preview.records.single().date)
+    }
 }

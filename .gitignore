@@ -13,3 +13,9 @@ captures/
 *.class
 .kotlin/
 out/
+
+# Signing keys and generated APK outputs
+*.jks
+*.keystore
+*pwd*.txt
+app/release/

@@ -39,6 +39,7 @@ import androidx.compose.material.icons.filled.Backup
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.CardGiftcard
 import androidx.compose.material.icons.filled.Category
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.Download
@@ -56,6 +57,7 @@ import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.filled.ShoppingBag
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material.icons.filled.Subscriptions
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
@@ -101,6 +103,7 @@ import com.budgettracker.core.ui.category.CategoryManagerScreen
 import com.budgettracker.core.ui.category.MaterialIconOptions
 import com.budgettracker.core.ui.category.MaterialIconSections
 import com.budgettracker.core.ui.category.asCategoryUiModel
+import com.budgettracker.core.ui.category.suggestedCategoryIconName
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.ZoneOffset
@@ -111,12 +114,6 @@ fun SettingsRoute(
     modifier: Modifier = Modifier,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
-    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val amountInputMode by viewModel.amountInputMode.collectAsStateWithLifecycle()
-    val googleDriveBackupState by viewModel.googleDriveBackupState.collectAsStateWithLifecycle()
-    val cashbookUiState by viewModel.cashbookUiState.collectAsStateWithLifecycle()
-    val categories by viewModel.categories.collectAsStateWithLifecycle()
-    val recurringTransactions by viewModel.recurringTransactions.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     var notificationReadingEnabled by remember { mutableStateOf(context.isPaymentNotificationAccessEnabled()) }
@@ -155,11 +152,16 @@ fun SettingsRoute(
 
     when (screenMode) {
         SettingsScreenMode.Main -> {
+            val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+            val amountInputMode by viewModel.amountInputMode.collectAsStateWithLifecycle()
+            val googleDriveBackupState by viewModel.googleDriveBackupState.collectAsStateWithLifecycle()
+
             SettingsScreen(
                 uiState = uiState,
                 googleDriveBackupState = googleDriveBackupState,
                 notificationReadingEnabled = notificationReadingEnabled,
                 amountInputMode = amountInputMode,
+                onGoogleDriveSyncClick = viewModel::syncGoogleDriveBackup,
                 onGoogleDriveToggle = { enabled ->
                     if (enabled) {
                         if (googleDriveBackupState.isConnected) {
@@ -200,7 +202,7 @@ fun SettingsRoute(
                     )
                 },
                 onExportClick = {
-                    exportLauncher.launch("budget_tracker_money_manager.csv")
+                    exportLauncher.launch("budget_tracker_export.csv")
                 },
                 onConfirmImport = viewModel::confirmImport,
                 onDismissImport = viewModel::clearImportPreview,
@@ -209,6 +211,8 @@ fun SettingsRoute(
         }
 
         SettingsScreenMode.Cashbooks -> {
+            val cashbookUiState by viewModel.cashbookUiState.collectAsStateWithLifecycle()
+
             CashbookSettingsScreen(
                 cashbooks = cashbookUiState.cashbooks,
                 selectedCashbookId = cashbookUiState.selectedCashbookId,
@@ -220,16 +224,26 @@ fun SettingsRoute(
         }
 
         SettingsScreenMode.Categories -> {
+            val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+            val categories by viewModel.categories.collectAsStateWithLifecycle()
+
             CategorySettingsScreen(
                 categories = categories,
+                deletePrompt = uiState.categoryDeletePrompt,
                 onBack = { screenMode = SettingsScreenMode.Main },
                 onSaveCategory = viewModel::updateCategory,
                 onArchiveCategory = viewModel::archiveCategory,
+                onCategoriesReordered = viewModel::reorderCategories,
+                onDismissDeletePrompt = viewModel::dismissCategoryDeletePrompt,
+                onReplaceAndArchiveCategory = viewModel::replaceAndArchiveCategory,
                 modifier = modifier,
             )
         }
 
         SettingsScreenMode.RecurringTransactions -> {
+            val categories by viewModel.categories.collectAsStateWithLifecycle()
+            val recurringTransactions by viewModel.recurringTransactions.collectAsStateWithLifecycle()
+
             RecurringTransactionsScreen(
                 categories = categories,
                 recurringTransactions = recurringTransactions,
@@ -249,6 +263,7 @@ private fun SettingsScreen(
     googleDriveBackupState: GoogleDriveBackupState,
     notificationReadingEnabled: Boolean,
     amountInputMode: AmountInputMode,
+    onGoogleDriveSyncClick: () -> Unit,
     onGoogleDriveToggle: (Boolean) -> Unit,
     onNotificationReadingToggle: (Boolean) -> Unit,
     onAmountInputModeSelected: (AmountInputMode) -> Unit,
@@ -277,6 +292,9 @@ private fun SettingsScreen(
             item {
                 SettingsHero(
                     googleDriveConnected = googleDriveBackupState.isConnected,
+                    googleAccountName = googleDriveBackupState.accountDisplayName
+                        ?.takeIf { it.isNotBlank() }
+                        ?: googleDriveBackupState.accountEmail,
                     notificationReadingEnabled = notificationReadingEnabled,
                 )
             }
@@ -295,6 +313,14 @@ private fun SettingsScreen(
                         checked = googleDriveBackupState.isConnected,
                         onCheckedChange = onGoogleDriveToggle,
                     )
+                    if (googleDriveBackupState.isConnected) {
+                        NavigationSettingRow(
+                            icon = Icons.Filled.Sync,
+                            title = "Sync Google Drive now",
+                            subtitle = "Upload current local data to Google Drive",
+                            onClick = onGoogleDriveSyncClick,
+                        )
+                    }
                 }
             }
             item {
@@ -324,7 +350,7 @@ private fun SettingsScreen(
                     NavigationSettingRow(
                         icon = Icons.Filled.UploadFile,
                         title = "Export data",
-                        subtitle = "Export Money Manager compatible CSV",
+                        subtitle = "Export CSV that can be imported later",
                         onClick = onExportClick,
                     )
                     NavigationSettingRow(
@@ -397,8 +423,20 @@ private fun SettingsHeader() {
 @Composable
 private fun SettingsHero(
     googleDriveConnected: Boolean,
+    googleAccountName: String?,
     notificationReadingEnabled: Boolean,
 ) {
+    val profileTitle = if (googleDriveConnected) {
+        googleAccountName?.takeIf { it.isNotBlank() } ?: "Google account linked"
+    } else {
+        "No personal profile"
+    }
+    val profileSubtitle = if (googleDriveConnected) {
+        "Your Google Drive backup is linked. Manage storage, cashbooks, import/export, input, and notifications here."
+    } else {
+        "This area is for storage, cashbook, import/export, input, and notification settings."
+    }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -415,14 +453,16 @@ private fun SettingsHero(
             .padding(16.dp),
     ) {
         Text(
-            text = "No personal profile",
+            text = profileTitle,
             color = Color.White,
             fontSize = 20.sp,
             fontWeight = FontWeight.Black,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
         Spacer(modifier = Modifier.height(6.dp))
         Text(
-            text = "This area is for storage, cashbook, import/export, input, and notification settings.",
+            text = profileSubtitle,
             color = SoftText,
             fontSize = 12.sp,
             lineHeight = 17.sp,
@@ -973,9 +1013,13 @@ private fun AddCashbookDialog(
 @Composable
 private fun CategorySettingsScreen(
     categories: List<Category>,
+    deletePrompt: CategoryDeletePrompt?,
     onBack: () -> Unit,
     onSaveCategory: (Category, String, String, String) -> Unit,
     onArchiveCategory: (Category) -> Unit,
+    onCategoriesReordered: (List<String>) -> Unit,
+    onDismissDeletePrompt: () -> Unit,
+    onReplaceAndArchiveCategory: (String, String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var selectedType by remember { mutableStateOf(TransactionType.Expense) }
@@ -997,7 +1041,7 @@ private fun CategorySettingsScreen(
         categoryIconDraft = MaterialIconOptions
             .firstOrNull { it.name == category.icon }
             ?.name
-            ?: MaterialIconOptions.first().name
+            ?: suggestedCategoryIconName(category.name)
     }
 
     fun closeEditor() {
@@ -1014,6 +1058,9 @@ private fun CategorySettingsScreen(
         onCategoryClick = {},
         onCategoryEditClick = { categoryUiModel ->
             visibleCategories.firstOrNull { it.id == categoryUiModel.id }?.let(::openEditor)
+        },
+        onCategoriesReordered = { reorderedCategories ->
+            onCategoriesReordered(reorderedCategories.map { it.id })
         },
         title = "Category",
         helperText = "Tap to edit",
@@ -1052,10 +1099,118 @@ private fun CategorySettingsScreen(
                         closeEditor()
                     },
                 ) {
-                    Text("Hide")
+                    Text(
+                        text = "Delete category",
+                        color = Color(0xFFFCA5A5),
+                        fontWeight = FontWeight.Black,
+                    )
                 }
             },
         )
+    }
+
+    deletePrompt?.let { prompt ->
+        val replacementCategories = categories
+            .filter { category -> category.type == prompt.categoryType && category.id != prompt.categoryId }
+            .sortedWith(compareBy<Category> { it.sortOrder }.thenBy { it.name })
+        var selectedReplacementId by remember(prompt.categoryId, replacementCategories) {
+            mutableStateOf(replacementCategories.firstOrNull()?.id.orEmpty())
+        }
+
+        AlertDialog(
+            onDismissRequest = onDismissDeletePrompt,
+            containerColor = Panel,
+            titleContentColor = Color.White,
+            textContentColor = Color.White,
+            title = {
+                Text(
+                    text = "Replace category first",
+                    fontWeight = FontWeight.Black,
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = "\"${prompt.categoryName}\" is used by ${prompt.transactionCount} transactions and ${prompt.recurringCount} recurring transactions.",
+                        color = SoftText,
+                        fontSize = 13.sp,
+                        lineHeight = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Text(
+                        text = "Choose where to move those records before deleting it.",
+                        color = MutedText,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    if (replacementCategories.isEmpty()) {
+                        EmptyPanel(message = "Create another ${prompt.categoryType.name.lowercase()} category first.")
+                    } else {
+                        replacementCategories.forEach { category ->
+                            ReplacementCategoryRow(
+                                category = category,
+                                selected = selectedReplacementId == category.id,
+                                onClick = { selectedReplacementId = category.id },
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = selectedReplacementId.isNotBlank(),
+                    onClick = {
+                        onReplaceAndArchiveCategory(prompt.categoryId, selectedReplacementId)
+                    },
+                ) {
+                    Text("Move and delete")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = onDismissDeletePrompt) {
+                    Text("Cancel")
+                }
+            },
+        )
+    }
+}
+
+@Composable
+private fun ReplacementCategoryRow(
+    category: Category,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .border(
+                width = 1.dp,
+                color = if (selected) AccentBlue else Stroke,
+                shape = RoundedCornerShape(16.dp),
+            )
+            .background(if (selected) AccentBlue.copy(alpha = 0.18f) else Panel)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Text(
+            text = category.name,
+            color = Color.White,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Black,
+            modifier = Modifier.weight(1f),
+        )
+        if (selected) {
+            Icon(
+                imageVector = Icons.Filled.Check,
+                contentDescription = "Selected replacement",
+                tint = Color.White,
+                modifier = Modifier.size(20.dp),
+            )
+        }
     }
 }
 
@@ -1765,8 +1920,7 @@ private fun GoogleDriveBackupState.backupSubtitle(): String = when {
             ?.format(DriveSyncFormatter)
         "Connected · Last synced $formatted"
     }
-    isConnected -> accountEmail?.let { "Connected as $it · Tap to sync now" }
-        ?: "Connected · Tap to sync now"
+    isConnected -> accountEmail?.let { "Connected as $it" } ?: "Connected"
     else -> "Not connected · Tap to link Google Drive"
 }
 
@@ -1805,9 +1959,13 @@ private val SoftText = Color(0xFFD6E2F2)
 private fun SettingsScreenPreview() {
     SettingsScreen(
         uiState = SettingsUiState(),
-        googleDriveBackupState = GoogleDriveBackupState(),
+        googleDriveBackupState = GoogleDriveBackupState(
+            isConnected = true,
+            accountDisplayName = "Google User",
+        ),
         notificationReadingEnabled = false,
         amountInputMode = AmountInputMode.NormalDecimal,
+        onGoogleDriveSyncClick = {},
         onGoogleDriveToggle = {},
         onNotificationReadingToggle = {},
         onAmountInputModeSelected = {},

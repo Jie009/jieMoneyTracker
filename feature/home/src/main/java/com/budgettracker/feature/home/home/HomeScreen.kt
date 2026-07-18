@@ -1,5 +1,8 @@
 package com.budgettracker.feature.home.home
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -16,7 +19,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarMonth
@@ -42,9 +46,12 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -54,13 +61,17 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.budgettracker.core.domain.money.AmountFormatter
 import com.budgettracker.core.model.Money
+import com.budgettracker.core.ui.category.toCategoryColor
+import kotlinx.coroutines.delay
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -97,17 +108,24 @@ private fun HomeScreen(
     modifier: Modifier = Modifier,
 ) {
     var showMonthDialog by remember { mutableStateOf(false) }
+    var showDateDialog by remember { mutableStateOf(false) }
     var showSearchDialog by remember { mutableStateOf(false) }
     var selectedMonth by remember { mutableStateOf(YearMonth.now()) }
+    var selectedDate by remember { mutableStateOf<LocalDate?>(null) }
     var categoryQuery by remember { mutableStateOf("") }
     var selectedTransactionId by remember { mutableStateOf<String?>(null) }
+    var playRecordIntroAnimation by remember { mutableStateOf(true) }
+    var hasStartedRecordIntroAnimation by remember { mutableStateOf(false) }
+    var latestVisibleTransactionId by rememberSaveable { mutableStateOf<String?>(null) }
+    val listState = rememberLazyListState()
     val selectedTransaction = remember(transactions, selectedTransactionId) {
         transactions.firstOrNull { it.id == selectedTransactionId }
     }
-    val visibleTransactions = remember(transactions, selectedMonth, categoryQuery) {
+    val visibleTransactions = remember(transactions, selectedMonth, selectedDate, categoryQuery) {
         val normalizedQuery = categoryQuery.trim()
         transactions
             .filter { transaction -> YearMonth.from(transaction.date) == selectedMonth }
+            .filter { transaction -> selectedDate == null || transaction.date == selectedDate }
             .filter { transaction ->
                 normalizedQuery.isBlank() || transaction.title.contains(
                     other = normalizedQuery,
@@ -122,6 +140,36 @@ private fun HomeScreen(
             transactions = transactions,
         )
     }
+    LaunchedEffect(selectedMonth, selectedDate, categoryQuery) {
+        if (visibleTransactions.isNotEmpty()) {
+            listState.scrollToItem(0)
+        }
+    }
+    LaunchedEffect(visibleTransactions.firstOrNull()?.id) {
+        val firstTransactionId = visibleTransactions.firstOrNull()?.id
+        if (
+            firstTransactionId != null &&
+            latestVisibleTransactionId != null &&
+            firstTransactionId != latestVisibleTransactionId
+        ) {
+            listState.scrollToItem(0)
+        }
+        latestVisibleTransactionId = firstTransactionId
+    }
+    LaunchedEffect(visibleTransactions.isNotEmpty(), hasStartedRecordIntroAnimation) {
+        if (visibleTransactions.isNotEmpty() && !hasStartedRecordIntroAnimation) {
+            hasStartedRecordIntroAnimation = true
+            val animatedItemCount = minOf(visibleTransactions.size, IntroAnimatedRecordCount)
+            delay((((animatedItemCount - 1) * RecordItemAnimationDelayMillis) + RecordItemAnimationDurationMillis).toLong())
+            playRecordIntroAnimation = false
+        }
+    }
+    LaunchedEffect(listState.isScrollInProgress) {
+        if (listState.isScrollInProgress) {
+            playRecordIntroAnimation = false
+            hasStartedRecordIntroAnimation = true
+        }
+    }
 
     Column(
         modifier = modifier
@@ -134,7 +182,7 @@ private fun HomeScreen(
         HomeHeader(
             onProfileClick = onProfileClick,
             onSearchClick = { showSearchDialog = true },
-            onCalendarClick = { showMonthDialog = true },
+            onCalendarClick = { showDateDialog = true },
         )
         Spacer(modifier = Modifier.height(14.dp))
         BalanceCard(summary = selectedMonthlySummary)
@@ -142,6 +190,7 @@ private fun HomeScreen(
         SectionHeader(
             title = filterTitle(
                 selectedMonth = selectedMonth,
+                selectedDate = selectedDate,
                 categoryQuery = categoryQuery,
             ),
             action = selectedMonth.asFilterLabel(),
@@ -149,6 +198,7 @@ private fun HomeScreen(
         )
         Spacer(modifier = Modifier.height(10.dp))
         LazyColumn(
+            state = listState,
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f),
@@ -159,15 +209,11 @@ private fun HomeScreen(
                     EmptyTransactionsMessage()
                 }
             } else {
-                items(visibleTransactions, key = { it.id }) { transaction ->
-                    if (transaction.showDayHeader) {
-                        DayHeader(
-                            label = transaction.dayLabel,
-                            summary = transaction.daySummary,
-                        )
-                    }
-                    TransactionRow(
+                itemsIndexed(visibleTransactions, key = { _, transaction -> transaction.id }) { index, transaction ->
+                    AnimatedTransactionListItem(
+                        index = index,
                         transaction = transaction,
+                        playIntroAnimation = playRecordIntroAnimation && index < IntroAnimatedRecordCount,
                         onClick = { selectedTransactionId = transaction.id },
                     )
                 }
@@ -181,8 +227,22 @@ private fun HomeScreen(
     if (showMonthDialog) {
         HomeMonthFilterDialog(
             selectedMonth = selectedMonth,
-            onMonthSelected = { selectedMonth = it },
+            onMonthSelected = {
+                selectedMonth = it
+                selectedDate = null
+            },
             onDismiss = { showMonthDialog = false },
+        )
+    }
+
+    if (showDateDialog) {
+        HomeDateFilterDialog(
+            selectedDate = selectedDate ?: LocalDate.now(),
+            onDateSelected = {
+                selectedDate = it
+                selectedMonth = YearMonth.from(it)
+            },
+            onDismiss = { showDateDialog = false },
         )
     }
 
@@ -384,10 +444,10 @@ private fun MonthlySummaryUiModel.forMonth(
     }
     val income = monthTransactions
         .filter { it.isIncome }
-        .sumOf { it.amount.extractMinorUnits() }
+        .sumOf { it.amountMinor }
     val expenses = monthTransactions
         .filterNot { it.isIncome }
-        .sumOf { it.amount.extractMinorUnits() }
+        .sumOf { it.amountMinor }
 
     return copy(
         year = selectedMonth.year.toString(),
@@ -396,11 +456,6 @@ private fun MonthlySummaryUiModel.forMonth(
         income = income.formatPlainAmount(),
         balance = (income - expenses).formatPlainAmount(),
     )
-}
-
-private fun String.extractMinorUnits(): Long {
-    val numeric = filter { it.isDigit() || it == '.' }
-    return runCatching { AmountFormatter.parseMinorUnits(numeric) }.getOrDefault(0L)
 }
 
 private fun Long.formatPlainAmount(): String =
@@ -476,8 +531,115 @@ private fun HomeMonthFilterDialog(
     onMonthSelected: (YearMonth) -> Unit,
     onDismiss: () -> Unit,
 ) {
+    var draftYear by remember(selectedMonth) { mutableStateOf(selectedMonth.year) }
+    var draftMonth by remember(selectedMonth) { mutableStateOf(selectedMonth.monthValue) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = Panel,
+        titleContentColor = Color.White,
+        textContentColor = Color.White,
+        title = {
+            Text(
+                text = "Select month",
+                fontWeight = FontWeight.Bold,
+            )
+        },
+        text = {
+            Column {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    TextButton(onClick = { draftYear -= 1 }) {
+                        Text("Previous")
+                    }
+                    Text(
+                        text = draftYear.toString(),
+                        color = Color.White,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Black,
+                    )
+                    TextButton(onClick = { draftYear += 1 }) {
+                        Text("Next")
+                    }
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+                (1..12).chunked(3).forEach { monthRow ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        monthRow.forEach { month ->
+                            MonthPickerChip(
+                                label = YearMonth.of(draftYear, month).format(MonthChipFormatter),
+                                selected = month == draftMonth,
+                                onClick = { draftMonth = month },
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    onMonthSelected(YearMonth.of(draftYear, draftMonth))
+                    onDismiss()
+                },
+            ) {
+                Text("Apply")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        },
+    )
+}
+
+@Composable
+private fun MonthPickerChip(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier
+            .height(44.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .border(
+                width = 1.dp,
+                color = if (selected) AccentBlue else Stroke,
+                shape = RoundedCornerShape(14.dp),
+            )
+            .background(if (selected) AccentBlue.copy(alpha = 0.24f) else Color.White.copy(alpha = 0.06f))
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = label,
+            color = if (selected) Color.White else SoftText,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Bold,
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun HomeDateFilterDialog(
+    selectedDate: LocalDate,
+    onDateSelected: (LocalDate) -> Unit,
+    onDismiss: () -> Unit,
+) {
     val datePickerState = rememberDatePickerState(
-        initialSelectedDateMillis = selectedMonth.atDay(1).toUtcMillis(),
+        initialSelectedDateMillis = selectedDate.toUtcMillis(),
     )
 
     DatePickerDialog(
@@ -487,7 +649,7 @@ private fun HomeMonthFilterDialog(
                 onClick = {
                     datePickerState.selectedDateMillis
                         ?.toLocalDate()
-                        ?.let { onMonthSelected(YearMonth.from(it)) }
+                        ?.let(onDateSelected)
                     onDismiss()
                 },
             ) {
@@ -641,6 +803,73 @@ private fun DetailLine(
 }
 
 @Composable
+private fun AnimatedTransactionListItem(
+    index: Int,
+    transaction: HomeTransactionUiModel,
+    playIntroAnimation: Boolean,
+    onClick: () -> Unit,
+) {
+    val progress = remember(transaction.id) {
+        Animatable(if (playIntroAnimation) 0f else 1f)
+    }
+    val density = LocalDensity.current
+    val startOffsetX = with(density) { (-16).dp.toPx() }
+    val startOffsetY = with(density) { (-6).dp.toPx() }
+
+    if (!playIntroAnimation) {
+        TransactionListItemContent(
+            transaction = transaction,
+            onClick = onClick,
+        )
+        return
+    }
+
+    LaunchedEffect(transaction.id, index, playIntroAnimation) {
+        progress.snapTo(0f)
+        delay((index * RecordItemAnimationDelayMillis).coerceAtMost(MaxRecordItemAnimationDelayMillis).toLong())
+        progress.animateTo(
+            targetValue = 1f,
+            animationSpec = tween(
+                durationMillis = RecordItemAnimationDurationMillis,
+                easing = FastOutSlowInEasing,
+            ),
+        )
+    }
+
+    TransactionListItemContent(
+        transaction = transaction,
+        onClick = onClick,
+        modifier = Modifier.graphicsLayer {
+            val remaining = 1f - progress.value
+            alpha = progress.value
+            translationX = startOffsetX * remaining
+            translationY = startOffsetY * remaining
+        },
+    )
+}
+
+@Composable
+private fun TransactionListItemContent(
+    transaction: HomeTransactionUiModel,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier = modifier) {
+        if (transaction.showDayHeader) {
+            DayHeader(
+                label = transaction.dayLabel,
+                summary = transaction.daySummary,
+            )
+            Spacer(modifier = Modifier.height(10.dp))
+        }
+        TransactionRow(
+            transaction = transaction,
+            onClick = onClick,
+        )
+    }
+}
+
+@Composable
 private fun TransactionRow(
     transaction: HomeTransactionUiModel,
     onClick: () -> Unit,
@@ -655,25 +884,19 @@ private fun TransactionRow(
             .padding(horizontal = 11.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        val categoryColor = transaction.categoryColor.toCategoryColor()
         Box(
             modifier = Modifier
                 .size(42.dp)
                 .clip(RoundedCornerShape(15.dp))
-                .border(1.dp, AccentStroke.copy(alpha = 0.5f), RoundedCornerShape(15.dp))
-                .background(
-                    Brush.linearGradient(
-                        listOf(
-                            AccentBlue.copy(alpha = 0.2f),
-                            AccentGreen.copy(alpha = 0.08f),
-                        ),
-                    ),
-                ),
+                .border(1.dp, categoryColor.copy(alpha = 0.45f), RoundedCornerShape(15.dp))
+                .background(categoryColor.copy(alpha = 0.16f)),
             contentAlignment = Alignment.Center,
         ) {
             Icon(
                 imageVector = transaction.icon,
                 contentDescription = transaction.title,
-                tint = Color(0xFFBFDBFE),
+                tint = categoryColor,
                 modifier = Modifier.size(23.dp),
             )
         }
@@ -732,6 +955,7 @@ private fun RoundIconButton(
     }
 }
 
+@Immutable
 data class MonthlySummaryUiModel(
     val year: String = "",
     val month: String = "",
@@ -742,6 +966,7 @@ data class MonthlySummaryUiModel(
     val cashbookName: String = "Personal",
 )
 
+@Immutable
 data class HomeTransactionUiModel(
     val id: String,
     val date: LocalDate,
@@ -750,8 +975,10 @@ data class HomeTransactionUiModel(
     val title: String,
     val note: String,
     val amount: String,
+    val amountMinor: Long = 0L,
     val createdAt: LocalDateTime,
     val icon: ImageVector,
+    val categoryColor: String = "#64748B",
     val isIncome: Boolean,
     val showDayHeader: Boolean,
 )
@@ -920,17 +1147,23 @@ private fun YearMonth.asFilterLabel(): String =
 
 private fun filterTitle(
     selectedMonth: YearMonth,
+    selectedDate: LocalDate?,
     categoryQuery: String,
 ): String {
     val normalizedQuery = categoryQuery.trim()
+    val dateLabel = selectedDate?.format(FilterDateFormatter)
 
     return when {
+        normalizedQuery.isNotBlank() && dateLabel != null -> "$normalizedQuery on $dateLabel"
         normalizedQuery.isNotBlank() -> "$normalizedQuery in ${selectedMonth.asFilterLabel()}"
+        dateLabel != null -> "Records for $dateLabel"
         else -> "Records for ${selectedMonth.asFilterLabel()}"
     }
 }
 
 private val FilterMonthFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("MMM yyyy")
+private val FilterDateFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("MMM d, yyyy")
+private val MonthChipFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("MMM")
 private val CreatedAtFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("MMM d, yyyy hh:mm a")
 
 private val AppBackground = Color(0xFF08142A)
@@ -943,6 +1176,11 @@ private val MutedText = Color(0xFF91A7C5)
 private val SoftText = Color(0xFFD6E2F2)
 private val ExpenseText = Color(0xFFF87171)
 private val IncomeText = Color(0xFF86EFAC)
+
+private const val RecordItemAnimationDelayMillis = 24
+private const val MaxRecordItemAnimationDelayMillis = 216
+private const val RecordItemAnimationDurationMillis = 140
+private const val IntroAnimatedRecordCount = 10
 
 @Preview
 @Composable

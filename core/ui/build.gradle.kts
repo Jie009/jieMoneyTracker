@@ -6,4 +6,5 @@ plugins {
 dependencies {
     implementation(project(":core:model"))
     implementation(project(":core:design-system"))
+    implementation(libs.reorderable)
 }

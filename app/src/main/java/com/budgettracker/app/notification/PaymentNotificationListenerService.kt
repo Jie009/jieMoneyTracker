@@ -5,6 +5,7 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
@@ -24,19 +25,33 @@ class PaymentNotificationListenerService : NotificationListenerService() {
         PublicBankNotificationParser(),
     )
 
+    override fun onCreate() {
+        super.onCreate()
+        getSystemService(NotificationManager::class.java).createQuickAddChannel()
+    }
+
     override fun onNotificationPosted(sbn: StatusBarNotification) {
-        if (sbn.packageName == packageName) return
+        runCatching {
+            if (sbn.packageName == packageName) return
 
-        val rawNotification = sbn.toRawNotification()
-        val parsedNotification = parsers
-            .asSequence()
-            .filter { it.supports(rawNotification.packageName) }
-            .mapNotNull { it.parse(rawNotification) }
-            .firstOrNull()
-            ?: return
+            val rawNotification = sbn.toRawNotification()
+            val parsedNotification = parsers
+                .asSequence()
+                .filter { it.supports(rawNotification.packageName) }
+                .mapNotNull { it.parse(rawNotification) }
+                .firstOrNull()
+                ?: return
 
-        if (DuplicateNotifications.isDuplicate(parsedNotification, rawNotification)) return
-        showQuickAddNotification(parsedNotification)
+            if (DuplicateNotifications.isDuplicate(parsedNotification, rawNotification)) return
+            showQuickAddNotification(parsedNotification)
+        }
+    }
+
+    override fun onListenerDisconnected() {
+        super.onListenerDisconnected()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            requestRebind(ComponentName(this, PaymentNotificationListenerService::class.java))
+        }
     }
 
     private fun showQuickAddNotification(parsedNotification: ParsedPaymentNotification) {
@@ -45,9 +60,6 @@ class PaymentNotificationListenerService : NotificationListenerService() {
         ) {
             return
         }
-
-        val notificationManager = getSystemService(NotificationManager::class.java)
-        notificationManager.createQuickAddChannel()
 
         val pendingIntent = PendingIntent.getActivity(
             this,
@@ -80,7 +92,7 @@ class PaymentNotificationListenerService : NotificationListenerService() {
             .setCategory(Notification.CATEGORY_RECOMMENDATION)
             .build()
 
-        notificationManager.notify(parsedNotification.notificationId, notification)
+        getSystemService(NotificationManager::class.java).notify(parsedNotification.notificationId, notification)
     }
 }
 
@@ -131,7 +143,7 @@ private fun parsePaymentNotification(
         ?.getOrNull(1)
         ?.toAmountInput()
         ?: return null
-    val transactionType = searchableText.detectTransactionType(source) ?: return null
+    val transactionType = searchableText.detectTransactionType(source)
     val note = listOfNotNull(
         source.displayName,
         input.title.takeIf { it.isNotBlank() },
@@ -214,14 +226,12 @@ private object DuplicateNotifications {
     }
 }
 
-private fun String.detectTransactionType(source: PaymentNotificationSource): TransactionType? {
+private fun String.detectTransactionType(source: PaymentNotificationSource): TransactionType {
     val normalized = lowercase(Locale.US)
     val incomeKeywords = CommonIncomeKeywords + source.incomeKeywords
-    val expenseKeywords = CommonExpenseKeywords + source.expenseKeywords
 
     if (incomeKeywords.any { it in normalized }) return TransactionType.Income
-    if (expenseKeywords.any { it in normalized }) return TransactionType.Expense
-    return null
+    return TransactionType.Expense
 }
 
 private fun String.toAmountInput(): String =
@@ -268,25 +278,6 @@ private val CommonIncomeKeywords = listOf(
     "cashback",
 )
 
-private val CommonExpenseKeywords = listOf(
-    "payment successful",
-    "payment made",
-    "successfully paid",
-    "paid to",
-    "paid",
-    "purchase",
-    "spent at",
-    "spent",
-    "debited from",
-    "debited",
-    "funds debited",
-    "deducted",
-    "deducted from",
-    "charged",
-    "withdrawn",
-    "withdrawal",
-)
-
 private val PaymentNotificationSource.incomeKeywords: List<String>
     get() = when (this) {
         PaymentNotificationSource.TouchNGo -> listOf(
@@ -301,26 +292,6 @@ private val PaymentNotificationSource.incomeKeywords: List<String>
             "funds credited to your account",
             "received from",
             "transferred from",
-        )
-    }
-
-private val PaymentNotificationSource.expenseKeywords: List<String>
-    get() = when (this) {
-        PaymentNotificationSource.TouchNGo -> listOf(
-            "paid with touch",
-            "paid with tng",
-            "payment to",
-            "sent to",
-            "transferred to",
-        )
-        PaymentNotificationSource.PublicBank -> listOf(
-            "debited from your account",
-            "debited to your account",
-            "funds debited from your account",
-            "transferred to",
-            "sent to",
-            "card transaction",
-            "card purchase",
         )
     }
 

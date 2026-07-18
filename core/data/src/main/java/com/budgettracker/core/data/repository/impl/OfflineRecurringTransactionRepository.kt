@@ -7,6 +7,7 @@ import com.budgettracker.core.database.mapper.asExternalModel
 import com.budgettracker.core.model.RecurringTransaction
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import java.time.Instant
 import java.time.LocalDate
 import javax.inject.Inject
 
@@ -20,6 +21,21 @@ class OfflineRecurringTransactionRepository @Inject constructor(
 
     override suspend fun getDueRecurringTransactions(date: LocalDate): List<RecurringTransaction> =
         recurringTransactionDao.getDueRecurringTransactions(date).map { it.asExternalModel() }
+
+    override suspend fun countRecurringTransactionsByCategory(categoryId: String): Int =
+        recurringTransactionDao.countRecurringTransactionsByCategory(categoryId)
+
+    override suspend fun replaceCategory(
+        categoryId: String,
+        replacementCategoryId: String,
+        updatedAt: Instant,
+    ) {
+        recurringTransactionDao.replaceCategory(
+            categoryId = categoryId,
+            replacementCategoryId = replacementCategoryId,
+            updatedAt = updatedAt,
+        )
+    }
 
     override suspend fun upsertRecurringTransaction(recurringTransaction: RecurringTransaction) {
         recurringTransactionDao.upsertRecurringTransaction(recurringTransaction.asEntity())

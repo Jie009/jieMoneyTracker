@@ -1,11 +1,15 @@
 package com.budgettracker.core.data.backup
 
 import android.accounts.Account
+import android.app.AlarmManager
+import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
+import android.os.Process
+import android.os.SystemClock
 import com.budgettracker.core.database.BudgetTrackerDatabase
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInAccount
@@ -14,6 +18,8 @@ import com.google.android.gms.common.api.ApiException
 import com.google.android.gms.common.api.Scope
 import com.google.api.client.extensions.android.http.AndroidHttp
 import com.google.api.client.googleapis.extensions.android.gms.auth.GoogleAccountCredential
+import com.google.api.client.googleapis.extensions.android.gms.auth.UserRecoverableAuthIOException
+import com.google.api.client.googleapis.json.GoogleJsonResponseException
 import com.google.api.client.http.ByteArrayContent
 import com.google.api.client.json.gson.GsonFactory
 import com.google.api.services.drive.Drive
@@ -39,6 +45,7 @@ import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.system.exitProcess
 
 @Singleton
 class GoogleDriveBackupRepository @Inject constructor(
@@ -89,12 +96,14 @@ class GoogleDriveBackupRepository @Inject constructor(
         googleSignInClient.signOut()
         preferences.edit()
             .remove(AccountEmailKey)
+            .remove(AccountDisplayNameKey)
             .remove(PendingSyncKey)
             .apply()
         _state.update {
             it.copy(
                 isConnected = false,
                 accountEmail = null,
+                accountDisplayName = null,
                 isSyncing = false,
                 pendingSync = false,
                 message = "Google Drive disconnected.",
@@ -104,16 +113,19 @@ class GoogleDriveBackupRepository @Inject constructor(
 
     private suspend fun connectAccount(account: GoogleSignInAccount) {
         val email = account.email.orEmpty()
+        val displayName = account.displayName.orEmpty()
         preferences.edit()
             .putString(AccountEmailKey, email)
+            .putString(AccountDisplayNameKey, displayName)
             .putBoolean(PendingSyncKey, true)
             .apply()
         _state.update {
             it.copy(
                 isConnected = true,
                 accountEmail = email,
+                accountDisplayName = displayName,
                 pendingSync = true,
-                    message = "Google Drive connected. Checking cloud data...",
+                message = "Google Drive connected. Checking cloud data...",
             )
         }
         syncFromCloudOrUpload(account.account)
@@ -159,6 +171,9 @@ class GoogleDriveBackupRepository @Inject constructor(
                 }
             },
         )
+        if (result.getOrNull() == SyncDirection.Restored) {
+            restartAppAfterRestore()
+        }
     }
 
     private suspend fun syncNow(selectedAccount: Account? = currentGoogleAccount()?.account) {
@@ -211,15 +226,21 @@ class GoogleDriveBackupRepository @Inject constructor(
         result.fold(
             onSuccess = { value ->
                 val syncedAt = Instant.now()
+                val displayName = currentGoogleAccount()
+                    ?.takeIf { it.account?.name == account.name || it.email == account.name }
+                    ?.displayName
+                    .orEmpty()
                 preferences.edit()
                     .putBoolean(PendingSyncKey, false)
                     .putLong(LastSyncedAtKey, syncedAt.toEpochMilli())
                     .putString(AccountEmailKey, account.name)
+                    .putString(AccountDisplayNameKey, displayName)
                     .apply()
                 _state.update {
                     it.copy(
                         isConnected = true,
                         accountEmail = account.name,
+                        accountDisplayName = displayName,
                         isSyncing = false,
                         pendingSync = false,
                         lastSyncedAt = syncedAt,
@@ -233,7 +254,7 @@ class GoogleDriveBackupRepository @Inject constructor(
                     it.copy(
                         isSyncing = false,
                         pendingSync = true,
-                        message = error.localizedMessage ?: "Google Drive sync failed. Will retry later.",
+                        message = error.toGoogleDriveSyncMessage(),
                     )
                 }
             },
@@ -325,48 +346,84 @@ class GoogleDriveBackupRepository @Inject constructor(
     private fun restoreBackupArchive(backupBytes: ByteArray) {
         isRestoring = true
         try {
-            database.close()
-
             val databaseFile = context.getDatabasePath(DatabaseName)
-            databaseFile.parentFile?.mkdirs()
-            databaseFile.delete()
-            java.io.File("${databaseFile.path}-wal").delete()
-            java.io.File("${databaseFile.path}-shm").delete()
+            val restoreDir = java.io.File(context.cacheDir, RestoreDirectoryName).apply {
+                deleteRecursively()
+                mkdirs()
+            }
+            val restoredDatabaseFile = java.io.File(restoreDir, DatabaseName)
+            val restoredPreferencesFile = java.io.File(restoreDir, "shared_prefs/$PreferencesName.xml")
 
             ZipInputStream(ByteArrayInputStream(backupBytes)).use { zip ->
                 generateSequence { zip.nextEntry }.forEach { entry ->
                     when (entry.name) {
                         DatabaseName -> {
-                            databaseFile.outputStream().use { output -> zip.copyTo(output) }
+                            restoredDatabaseFile.parentFile?.mkdirs()
+                            restoredDatabaseFile.outputStream().use { output -> zip.copyTo(output) }
                         }
                         "shared_prefs/$PreferencesName.xml" -> {
-                            val prefsFile = java.io.File(
-                                context.applicationInfo.dataDir,
-                                "shared_prefs/$PreferencesName.xml",
-                            )
-                            prefsFile.parentFile?.mkdirs()
-                            prefsFile.outputStream().use { output -> zip.copyTo(output) }
+                            restoredPreferencesFile.parentFile?.mkdirs()
+                            restoredPreferencesFile.outputStream().use { output -> zip.copyTo(output) }
                         }
                     }
                     zip.closeEntry()
                 }
             }
 
-            check(databaseFile.exists()) { "Cloud backup did not contain the local database." }
+            check(restoredDatabaseFile.exists()) { "Cloud backup did not contain the local database." }
+
+            database.close()
+            databaseFile.parentFile?.mkdirs()
+            java.io.File("${databaseFile.path}-wal").delete()
+            java.io.File("${databaseFile.path}-shm").delete()
+            restoredDatabaseFile.copyTo(databaseFile, overwrite = true)
+
+            if (restoredPreferencesFile.exists()) {
+                val prefsFile = java.io.File(
+                    context.applicationInfo.dataDir,
+                    "shared_prefs/$PreferencesName.xml",
+                )
+                prefsFile.parentFile?.mkdirs()
+                restoredPreferencesFile.copyTo(prefsFile, overwrite = true)
+            }
+            restoreDir.deleteRecursively()
         } finally {
             isRestoring = false
         }
     }
 
+    private fun restartAppAfterRestore() {
+        val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)
+            ?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+            ?: return
+        val pendingIntent = PendingIntent.getActivity(
+            context,
+            RestoreRestartRequestCode,
+            launchIntent,
+            PendingIntent.FLAG_CANCEL_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        context.getSystemService(AlarmManager::class.java).set(
+            AlarmManager.ELAPSED_REALTIME,
+            SystemClock.elapsedRealtime() + RestoreRestartDelayMillis,
+            pendingIntent,
+        )
+        Process.killProcess(Process.myPid())
+        exitProcess(0)
+    }
+
     private fun refreshSignedInAccount() {
         val account = currentGoogleAccount()
         if (account != null) {
-            preferences.edit().putString(AccountEmailKey, account.email.orEmpty()).apply()
+            preferences.edit()
+                .putString(AccountEmailKey, account.email.orEmpty())
+                .putString(AccountDisplayNameKey, account.displayName.orEmpty())
+                .apply()
         }
         _state.update {
             it.copy(
                 isConnected = account != null,
                 accountEmail = account?.email ?: preferences.getString(AccountEmailKey, null),
+                accountDisplayName = account?.displayName ?: preferences.getString(AccountDisplayNameKey, null),
             )
         }
     }
@@ -418,6 +475,7 @@ class GoogleDriveBackupRepository @Inject constructor(
         return GoogleDriveBackupState(
             isConnected = false,
             accountEmail = preferences.getString(AccountEmailKey, null),
+            accountDisplayName = preferences.getString(AccountDisplayNameKey, null),
             isOnline = isNetworkAvailable(),
             pendingSync = preferences.getBoolean(PendingSyncKey, false),
             lastSyncedAt = lastSyncedAt,
@@ -435,6 +493,17 @@ class GoogleDriveBackupRepository @Inject constructor(
         _state.update { it.copy(message = message) }
     }
 
+    private fun Throwable.toGoogleDriveSyncMessage(): String =
+        when (this) {
+            is UserRecoverableAuthIOException ->
+                "Google Drive needs permission again. Disconnect Drive, then link it again."
+            is GoogleJsonResponseException -> {
+                val detail = details?.message ?: localizedMessage
+                "Google Drive sync failed (${statusCode}). ${detail ?: "Please check Drive API and OAuth configuration."}"
+            }
+            else -> localizedMessage ?: "Google Drive sync failed. Will retry later."
+        }
+
     private fun googleSignInOptions(): GoogleSignInOptions =
         GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
             .requestEmail()
@@ -449,9 +518,13 @@ class GoogleDriveBackupRepository @Inject constructor(
         const val DatabaseName = "budget_tracker.db"
         const val PreferencesName = "budget_tracker_preferences"
         const val AccountEmailKey = "google_drive_account_email"
+        const val AccountDisplayNameKey = "google_drive_account_display_name"
         const val PendingSyncKey = "google_drive_pending_sync"
         const val LastSyncedAtKey = "google_drive_last_synced_at"
         const val AutoSyncDebounceMillis = 1_500L
+        const val RestoreDirectoryName = "drive_restore"
+        const val RestoreRestartRequestCode = 4107
+        const val RestoreRestartDelayMillis = 500L
         val DatabaseTables = arrayOf(
             "cashbooks",
             "categories",
@@ -470,6 +543,7 @@ private enum class SyncDirection {
 data class GoogleDriveBackupState(
     val isConnected: Boolean = false,
     val accountEmail: String? = null,
+    val accountDisplayName: String? = null,
     val isOnline: Boolean = false,
     val isSyncing: Boolean = false,
     val pendingSync: Boolean = false,

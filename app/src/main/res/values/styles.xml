@@ -1,3 +1,15 @@
 <resources>
-    <style name="Theme.BudgetTracker" parent="android:style/Theme.Material.Light.NoActionBar" />
+    <style name="Theme.BudgetTracker" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:windowAnimationStyle">@style/Animation.BudgetTracker.None</item>
+        <item name="android:windowDisablePreview">true</item>
+    </style>
+
+    <style name="Animation.BudgetTracker.None" parent="@android:style/Animation.Activity">
+        <item name="android:activityOpenEnterAnimation">@anim/no_animation</item>
+        <item name="android:activityOpenExitAnimation">@anim/no_animation</item>
+        <item name="android:activityCloseEnterAnimation">@anim/no_animation</item>
+        <item name="android:activityCloseExitAnimation">@anim/no_animation</item>
+        <item name="android:windowEnterAnimation">@anim/no_animation</item>
+        <item name="android:windowExitAnimation">@anim/no_animation</item>
+    </style>
 </resources>

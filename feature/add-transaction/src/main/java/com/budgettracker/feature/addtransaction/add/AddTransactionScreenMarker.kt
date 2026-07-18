@@ -132,6 +132,7 @@ import com.budgettracker.core.ui.category.MaterialIconSections
 import com.budgettracker.core.ui.category.asCategoryUiModel
 import com.budgettracker.core.ui.category.defaultCategoryUiModels
 import com.budgettracker.core.ui.category.normalizedCategoryColor
+import com.budgettracker.core.ui.category.suggestedCategoryIconName
 import com.budgettracker.core.ui.category.toCategoryColor
 import com.budgettracker.core.ui.category.withEditableCategory
 import java.time.Instant
@@ -177,15 +178,30 @@ fun AddTransactionRoute(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val amountInputMode by viewModel.amountInputMode.collectAsStateWithLifecycle()
     val persistedCategories by viewModel.categories.collectAsStateWithLifecycle()
+    val rankedPersistedCategories by viewModel.rankedCategories.collectAsStateWithLifecycle()
     val categories = remember(persistedCategories, state.transactionType) {
         persistedCategories
             .filter { it.type == state.transactionType }
             .map { it.asCategoryUiModel() }
             .ifEmpty { defaultCategoryUiModels() }
     }
-    val selectedCategoryId = state.selectedCategoryId
-        ?.takeIf { selectedId -> categories.any { it.id == selectedId } }
-        ?: categories.firstOrNull()?.id.orEmpty()
+    val rankedCategories = remember(rankedPersistedCategories, categories, state.transactionType) {
+        rankedPersistedCategories
+            .filter { it.type == state.transactionType }
+            .map { it.asCategoryUiModel() }
+            .ifEmpty { categories }
+    }
+    val selectedCategoryId = remember(state.selectedCategoryId, categories, rankedCategories) {
+        state.selectedCategoryId
+            ?.takeIf { selectedId -> categories.any { it.id == selectedId } }
+            ?: rankedCategories.firstOrNull()?.id.orEmpty()
+    }
+    val amountText = remember(state.amountInput, amountInputMode) {
+        state.amountInput.asAmountText(amountInputMode)
+    }
+    val dateText = remember(state.dateMillis) {
+        state.dateMillis.asDateLabel()
+    }
     var noteDraft by remember { mutableStateOf("") }
     var showNoteDialog by remember { mutableStateOf(false) }
     var showDateDialog by remember { mutableStateOf(false) }
@@ -194,13 +210,13 @@ fun AddTransactionRoute(
     var editingCategoryId by remember { mutableStateOf<String?>(null) }
     var categoryDraftName by remember { mutableStateOf("") }
     var categoryDraftIconName by remember { mutableStateOf(MaterialIconOptions.first().name) }
+    var categoryIconManuallySelected by remember { mutableStateOf(false) }
     var categoryDraftColor by remember { mutableStateOf("#64748B") }
     val screenTitle = if (transactionId == null) "Add transaction" else "Edit transaction"
 
     fun saveTransaction() {
         viewModel.updateSelectedCategory(selectedCategoryId)
-        val normalizedAmount = state.amountInput
-            .asAmountText(amountInputMode)
+        val normalizedAmount = amountText
             .asSavedAmountText()
         if (normalizedAmount.isBlank()) return
         viewModel.updateAmountInput(normalizedAmount)
@@ -210,7 +226,8 @@ fun AddTransactionRoute(
     fun openCategoryDialog(category: CategoryUiModel?) {
         editingCategoryId = category?.id
         categoryDraftName = category?.name.orEmpty()
-        categoryDraftIconName = category?.icon?.name ?: MaterialIconOptions.first().name
+        categoryDraftIconName = category?.icon?.name ?: suggestedCategoryIconName(categoryDraftName)
+        categoryIconManuallySelected = category != null
         categoryDraftColor = category?.color ?: "#64748B"
         showCategoryDialog = true
     }
@@ -220,6 +237,7 @@ fun AddTransactionRoute(
         editingCategoryId = null
         categoryDraftName = ""
         categoryDraftIconName = MaterialIconOptions.first().name
+        categoryIconManuallySelected = false
         categoryDraftColor = "#64748B"
     }
 
@@ -234,6 +252,9 @@ fun AddTransactionRoute(
             },
             onAddCategoryClick = { openCategoryDialog(null) },
             onCategoryEditClick = ::openCategoryDialog,
+            onCategoriesReordered = { reorderedCategories ->
+                viewModel.reorderCategories(reorderedCategories.map { it.id })
+            },
             modifier = modifier,
         )
     } else {
@@ -241,11 +262,11 @@ fun AddTransactionRoute(
             title = screenTitle,
             transactionType = state.transactionType,
             amountInputMode = amountInputMode,
-            amountText = state.amountInput.asAmountText(amountInputMode),
-            categories = categories,
+            amountText = amountText,
+            categories = rankedCategories,
             selectedCategoryId = selectedCategoryId,
             noteText = state.note,
-            dateText = state.dateMillis.asDateLabel(),
+            dateText = dateText,
             noteDraft = noteDraft,
             showNoteDialog = showNoteDialog,
             showDateDialog = showDateDialog,
@@ -302,9 +323,17 @@ fun AddTransactionRoute(
             color = categoryDraftColor,
             selectedIconName = categoryDraftIconName,
             iconSections = MaterialIconSections,
-            onNameChange = { categoryDraftName = it },
+            onNameChange = {
+                categoryDraftName = it
+                if (editingCategoryId == null && !categoryIconManuallySelected) {
+                    categoryDraftIconName = suggestedCategoryIconName(it)
+                }
+            },
             onColorChange = { categoryDraftColor = it },
-            onIconSelected = { categoryDraftIconName = it },
+            onIconSelected = {
+                categoryDraftIconName = it
+                categoryIconManuallySelected = true
+            },
             onDismiss = ::closeCategoryDialog,
             onSave = {
                 val trimmedName = categoryDraftName.trim()
@@ -386,7 +415,7 @@ private fun AddTransactionScreen(
                 selectedType = transactionType,
                 onSelectedTypeChange = onTransactionTypeChange,
             )
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.weight(1f))
             AmountCard(amountText = amountText)
             Spacer(modifier = Modifier.weight(1f))
             CategorySection(
@@ -823,7 +852,7 @@ private fun Keypad(
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             KeypadRow(
-                values = listOf("1", "2", "3"),
+                values = listOf("7", "8", "9"),
                 onValueClick = onNumberClick,
             )
             KeypadRow(
@@ -831,7 +860,7 @@ private fun Keypad(
                 onValueClick = onNumberClick,
             )
             KeypadRow(
-                values = listOf("7", "8", "9"),
+                values = listOf("1", "2", "3"),
                 onValueClick = onNumberClick,
             )
             if (amountInputMode == AmountInputMode.AutoCents) {

@@ -1,5 +1,9 @@
 package com.budgettracker.feature.charts.overview
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -30,6 +34,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -62,6 +69,7 @@ import java.time.YearMonth
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import kotlin.math.min
 
 @Composable
 fun ChartsRoute(
@@ -85,24 +93,37 @@ private fun ChartsScreen(
     var selectedMonth by remember { mutableStateOf(YearMonth.now()) }
     var selectedCategory by remember { mutableStateOf<String?>(null) }
     var showCategoryFilter by remember { mutableStateOf(false) }
-    val monthlyDetails = remember(uiState, selectedMode, selectedMonth) {
-        uiState.toMonthlyDetails(
-            selectedMode = selectedMode,
-            selectedMonth = selectedMonth,
-        )
-    }
-    val monthlyCategoryBreakdown = remember(uiState, selectedMode, selectedMonth, selectedCategory) {
-        selectedCategory?.let { category ->
-            uiState.toCategoryMonthlyBreakdown(
+    val transactions = uiState.transactions
+    val categories = uiState.categories
+    val monthlyDetails by remember(transactions, categories, selectedMode, selectedMonth) {
+        derivedStateOf {
+            ChartsUiState(
+                transactions = transactions,
+                categories = categories,
+            ).toMonthlyDetails(
                 selectedMode = selectedMode,
                 selectedMonth = selectedMonth,
-                selectedCategory = category,
             )
+        }
+    }
+    val monthlyCategoryBreakdown by remember(transactions, categories, monthlyDetails, selectedMode, selectedMonth, selectedCategory) {
+        derivedStateOf {
+            selectedCategory?.let { category ->
+                ChartsUiState(
+                    transactions = transactions,
+                    categories = categories,
+                ).toCategoryMonthlyBreakdown(
+                    selectedMode = selectedMode,
+                    selectedMonth = selectedMonth,
+                    selectedCategory = category,
+                    monthlyDetails = monthlyDetails,
+                )
+            }
         }
     }
     val coloredMonthlyCategoryBreakdown = monthlyCategoryBreakdown?.withMonthlyColors()
     val displayedCategories = coloredMonthlyCategoryBreakdown?.toMonthlyChartCategories()
-        ?: monthlyDetails.toMonthlyChartCategories()
+        ?: monthlyDetails.toTopMonthlyChartCategories()
     val displayedBudgets = coloredMonthlyCategoryBreakdown?.withTotalSharePercents() ?: monthlyDetails
     val filterOptions = monthlyDetails.map { it.name }
     val hasCategoryFilter = selectedCategory != null
@@ -116,6 +137,11 @@ private fun ChartsScreen(
         ?: monthlyDetails.totalAmountLabel()
     val totalLabel = selectedCategory
         ?: if (selectedMode == ChartMode.Expenses) "Total Spent" else "Total Income"
+    val chartAnimationKey = ChartAnimationKey(
+        selectedMode = selectedMode,
+        selectedMonth = selectedMonth,
+        selectedCategory = selectedCategory,
+    )
 
     LazyColumn(
         modifier = modifier
@@ -155,6 +181,7 @@ private fun ChartsScreen(
         item {
             AnalyticsCard(
                 categories = displayedCategories,
+                chartAnimationKey = chartAnimationKey,
                 monthLabel = selectedMonth.format(MonthFormatter),
                 showMonthSwitcher = !hasCategoryFilter,
                 onPreviousMonthClick = { selectedMonth = selectedMonth.minusMonths(1) },
@@ -169,7 +196,9 @@ private fun ChartsScreen(
             )
         }
         item {
-            BudgetSpendingCard(budgets = displayedBudgets)
+            BudgetSpendingCard(
+                budgets = displayedBudgets,
+            )
         }
         item {
             Spacer(modifier = Modifier.height(18.dp))
@@ -252,6 +281,7 @@ private fun FilterPill(
 @Composable
 private fun AnalyticsCard(
     categories: List<ChartCategoryUiModel>,
+    chartAnimationKey: ChartAnimationKey,
     monthLabel: String,
     showMonthSwitcher: Boolean,
     onPreviousMonthClick: () -> Unit,
@@ -290,6 +320,7 @@ private fun AnalyticsCard(
         ) {
             DonutChart(
                 categories = categories,
+                animationKey = chartAnimationKey,
                 modifier = Modifier.size(206.dp),
             )
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -361,8 +392,21 @@ private fun MonthSwitcher(
 @Composable
 private fun DonutChart(
     categories: List<ChartCategoryUiModel>,
+    animationKey: ChartAnimationKey,
     modifier: Modifier = Modifier,
 ) {
+    val revealProgress = remember { Animatable(0f) }
+    LaunchedEffect(animationKey) {
+        revealProgress.snapTo(0f)
+        revealProgress.animateTo(
+            targetValue = 1f,
+            animationSpec = tween(
+                durationMillis = 900,
+                easing = FastOutSlowInEasing,
+            ),
+        )
+    }
+
     Canvas(modifier = modifier) {
         val diameter = size.minDimension
         val strokeWidth = 26.dp.toPx()
@@ -372,6 +416,7 @@ private fun DonutChart(
         )
         val arcSize = Size(diameter, diameter)
         var startAngle = -90f
+        var remainingRevealAngle = 360f * revealProgress.value
 
         drawArc(
             color = Color.White.copy(alpha = 0.06f),
@@ -385,16 +430,22 @@ private fun DonutChart(
 
         categories.forEach { category ->
             val sweepAngle = category.percent * 3.6f
-            drawArc(
-                color = category.color,
-                startAngle = startAngle,
-                sweepAngle = (sweepAngle - 3f).coerceAtLeast(1f),
-                useCenter = false,
-                topLeft = topLeft,
-                size = arcSize,
-                style = Stroke(width = strokeWidth, cap = StrokeCap.Butt),
-            )
+            val visibleSweepAngle = min(sweepAngle, remainingRevealAngle).coerceAtLeast(0f)
+            val gapAngle = if (sweepAngle >= 6f) 3f else 0f
+            val drawnSweepAngle = (visibleSweepAngle - gapAngle).coerceAtLeast(0f)
+            if (drawnSweepAngle > 0f) {
+                drawArc(
+                    color = category.color,
+                    startAngle = startAngle,
+                    sweepAngle = drawnSweepAngle,
+                    useCenter = false,
+                    topLeft = topLeft,
+                    size = arcSize,
+                    style = Stroke(width = strokeWidth, cap = StrokeCap.Butt),
+                )
+            }
             startAngle += sweepAngle
+            remainingRevealAngle -= sweepAngle
         }
     }
 }
@@ -536,7 +587,9 @@ private fun CategoryOptionRow(
 }
 
 @Composable
-private fun BudgetSpendingCard(budgets: List<BudgetSpendingUiModel>) {
+private fun BudgetSpendingCard(
+    budgets: List<BudgetSpendingUiModel>,
+) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -556,14 +609,18 @@ private fun BudgetSpendingCard(budgets: List<BudgetSpendingUiModel>) {
             )
         } else {
             budgets.forEach { budget ->
-                BudgetRow(budget = budget)
+                BudgetRow(
+                    budget = budget,
+                )
             }
         }
     }
 }
 
 @Composable
-private fun BudgetRow(budget: BudgetSpendingUiModel) {
+private fun BudgetRow(
+    budget: BudgetSpendingUiModel,
+) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
@@ -626,6 +683,15 @@ private fun ProgressBar(
     percent: Int,
     color: Color,
 ) {
+    val fillProgress by animateFloatAsState(
+        targetValue = percent / 100f,
+        animationSpec = tween(
+            durationMillis = 700,
+            easing = FastOutSlowInEasing,
+        ),
+        label = "BudgetProgress",
+    )
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -635,7 +701,7 @@ private fun ProgressBar(
     ) {
         Box(
             modifier = Modifier
-                .fillMaxWidth((percent / 100f).coerceIn(0f, 1f))
+                .fillMaxWidth(fillProgress.coerceIn(0f, 1f))
                 .height(7.dp)
                 .clip(RoundedCornerShape(999.dp))
                 .background(color),
@@ -692,12 +758,21 @@ private fun SmallIconButton(
     }
 }
 
+@Immutable
 private data class ChartCategoryUiModel(
     val name: String,
     val percent: Float,
     val color: Color,
 )
 
+@Immutable
+private data class ChartAnimationKey(
+    val selectedMode: ChartMode,
+    val selectedMonth: YearMonth,
+    val selectedCategory: String?,
+)
+
+@Immutable
 private data class BudgetSpendingUiModel(
     val name: String,
     val amount: String,
@@ -739,7 +814,6 @@ private fun ChartsUiState.toMonthlyDetails(
             )
         }
         .sortedByDescending { it.minorUnits }
-        .groupOverflowCategories()
         .withTotalSharePercents()
 }
 
@@ -747,15 +821,16 @@ private fun ChartsUiState.toCategoryMonthlyBreakdown(
     selectedMode: ChartMode,
     selectedMonth: YearMonth,
     selectedCategory: String,
+    monthlyDetails: List<BudgetSpendingUiModel> = toMonthlyDetails(
+        selectedMode = selectedMode,
+        selectedMonth = selectedMonth,
+    ),
 ): List<BudgetSpendingUiModel> {
     val selectedType = selectedMode.transactionType
     val category = categories.firstOrNull { category ->
         category.type == selectedType && category.name == selectedCategory
     }
-    val selectedCategoryIds = toMonthlyDetails(
-        selectedMode = selectedMode,
-        selectedMonth = selectedMonth,
-    ).firstOrNull { it.name == selectedCategory }?.categoryIds ?: setOf(category?.id)
+    val selectedCategoryIds = monthlyDetails.firstOrNull { it.name == selectedCategory }?.categoryIds ?: setOf(category?.id)
 
     return (0L..2L).map { monthsAgo ->
         val month = selectedMonth.minusMonths(monthsAgo)
@@ -821,6 +896,9 @@ private fun List<BudgetSpendingUiModel>.toMonthlyChartCategories(): List<ChartCa
         )
     }
 }
+
+private fun List<BudgetSpendingUiModel>.toTopMonthlyChartCategories(): List<ChartCategoryUiModel> =
+    groupOverflowCategories().toMonthlyChartCategories()
 
 private fun List<BudgetSpendingUiModel>.totalAmountLabel(): String {
     val total = sumOf { it.minorUnits }

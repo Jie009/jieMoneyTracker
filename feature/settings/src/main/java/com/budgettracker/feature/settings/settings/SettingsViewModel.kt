@@ -31,8 +31,13 @@ import com.budgettracker.core.model.Transaction
 import com.budgettracker.core.model.TransactionSource
 import com.budgettracker.core.model.TransactionType
 import com.budgettracker.core.ui.category.normalizedCategoryColor
+import com.budgettracker.core.ui.category.suggestedCategoryIconName
+import com.google.android.gms.auth.api.signin.GoogleSignInStatusCodes
+import com.google.android.gms.common.api.ApiException
+import com.google.android.gms.common.api.CommonStatusCodes
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.SharingStarted
@@ -46,6 +51,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.ByteArrayInputStream
 import java.nio.charset.StandardCharsets
 import java.time.Instant
@@ -217,11 +223,11 @@ class SettingsViewModel @Inject constructor(
             }
             _uiState.update { state ->
                 result.fold(
-                    onSuccess = { state.copy(isBusy = false) },
+                    onSuccess = { state.copy(isBusy = false, message = null) },
                     onFailure = { error ->
                         state.copy(
                             isBusy = false,
-                            message = error.localizedMessage ?: "Google Drive sign-in cancelled.",
+                            message = error.toGoogleDriveSignInMessage(),
                         )
                     },
                 )
@@ -256,13 +262,78 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun reorderCategories(orderedCategoryIds: List<String>) {
+        val categoryById = categories.value.associateBy { it.id }
+        val now = Instant.now()
+        val reorderedCategories = orderedCategoryIds.mapIndexedNotNull { index, id ->
+            categoryById[id]?.copy(
+                sortOrder = index,
+                updatedAt = now,
+            )
+        }
+        if (reorderedCategories.isEmpty()) return
+
+        viewModelScope.launch {
+            categoryRepository.upsertCategories(reorderedCategories)
+            _uiState.update { state -> state.copy(message = "Category order updated.") }
+        }
+    }
+
     fun archiveCategory(category: Category) {
         viewModelScope.launch {
-            categoryRepository.archiveCategory(
-                id = category.id,
-                updatedAt = Instant.now(),
+            val transactionCount = transactionRepository.countTransactionsByCategory(category.id)
+            val recurringCount = recurringTransactionRepository.countRecurringTransactionsByCategory(category.id)
+            if (transactionCount == 0 && recurringCount == 0) {
+                categoryRepository.archiveCategory(
+                    id = category.id,
+                    updatedAt = Instant.now(),
+                )
+                _uiState.update { state -> state.copy(message = "Category deleted.") }
+            } else {
+                _uiState.update { state ->
+                    state.copy(
+                        categoryDeletePrompt = CategoryDeletePrompt(
+                            categoryId = category.id,
+                            categoryName = category.name,
+                            categoryType = category.type,
+                            transactionCount = transactionCount,
+                            recurringCount = recurringCount,
+                        ),
+                    )
+                }
+            }
+        }
+    }
+
+    fun dismissCategoryDeletePrompt() {
+        _uiState.update { state -> state.copy(categoryDeletePrompt = null) }
+    }
+
+    fun replaceAndArchiveCategory(categoryId: String, replacementCategoryId: String) {
+        if (categoryId == replacementCategoryId) return
+
+        viewModelScope.launch {
+            val now = Instant.now()
+            transactionRepository.replaceCategory(
+                categoryId = categoryId,
+                replacementCategoryId = replacementCategoryId,
+                updatedAt = now,
             )
-            _uiState.update { state -> state.copy(message = "Category archived.") }
+            recurringTransactionRepository.replaceCategory(
+                categoryId = categoryId,
+                replacementCategoryId = replacementCategoryId,
+                updatedAt = now,
+            )
+            categoryRepository.archiveCategory(
+                id = categoryId,
+                updatedAt = now,
+            )
+            _uiState.update { state ->
+                state.copy(
+                    categoryDeletePrompt = null,
+                    message = "Category deleted and existing records moved.",
+                )
+            }
         }
     }
 
@@ -298,24 +369,26 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.update { it.copy(isBusy = true, message = "Reading import file...") }
             val result = runCatching {
-                val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-                    ?: error("Unable to read selected file.")
-                val preview = if (bytes.isXlsx()) {
-                    LegacyMoneyManagerXlsxReader.read(ByteArrayInputStream(bytes))
-                } else {
-                    LegacyMoneyManagerCsvReader.read(bytes.toString(StandardCharsets.UTF_8))
+                withContext(Dispatchers.IO) {
+                    val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                        ?: error("Unable to read selected file.")
+                    val preview = if (bytes.isXlsx()) {
+                        LegacyMoneyManagerXlsxReader.read(ByteArrayInputStream(bytes))
+                    } else {
+                        LegacyMoneyManagerCsvReader.read(bytes.toString(StandardCharsets.UTF_8))
+                    }
+                    val defaultCashbook = cashbookRepository.getSelectedCashbook()
+                        ?: error("Create a cashbook before importing.")
+                    val duplicateRows = detectDuplicateRows(preview.records, defaultCashbook.id)
+                    ImportPreviewUiState(
+                        records = preview.records,
+                        errors = preview.errors.map { "Row ${it.rowNumber}: ${it.message}" },
+                        duplicateRows = duplicateRows,
+                        ignoredPhotoRows = preview.records.count { it.photos != null },
+                        targetCashbookId = defaultCashbook.id,
+                        targetCashbookName = defaultCashbook.name,
+                    )
                 }
-                val defaultCashbook = cashbookRepository.getSelectedCashbook()
-                    ?: error("Create a cashbook before importing.")
-                val duplicateRows = detectDuplicateRows(preview.records, defaultCashbook.id)
-                ImportPreviewUiState(
-                    records = preview.records,
-                    errors = preview.errors.map { "Row ${it.rowNumber}: ${it.message}" },
-                    duplicateRows = duplicateRows,
-                    ignoredPhotoRows = preview.records.count { it.photos != null },
-                    targetCashbookId = defaultCashbook.id,
-                    targetCashbookName = defaultCashbook.name,
-                )
             }
 
             _uiState.update { state ->
@@ -343,11 +416,12 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.update { it.copy(isBusy = true, message = "Importing transactions...") }
             val result = runCatching {
-                val imported = importRecords(
-                    records = preview.records.filterNot { it.rowNumber in preview.duplicateRows },
-                    cashbookId = preview.targetCashbookId,
-                )
-                imported
+                withContext(Dispatchers.IO) {
+                    importRecords(
+                        records = preview.records.filterNot { it.rowNumber in preview.duplicateRows },
+                        cashbookId = preview.targetCashbookId,
+                    )
+                }
             }
 
             _uiState.update { state ->
@@ -378,22 +452,24 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.update { it.copy(isBusy = true, message = "Exporting transactions...") }
             val result = runCatching {
-                val cashbook = cashbookRepository.getSelectedCashbook()
-                    ?: error("No cashbook to export.")
-                val transactions = transactionRepository.observeTransactions(cashbook.id).first()
-                val expenseCategories = categoryRepository.getCategoriesByType(cashbook.id, TransactionType.Expense)
-                val incomeCategories = categoryRepository.getCategoriesByType(cashbook.id, TransactionType.Income)
-                val categoryById = (expenseCategories + incomeCategories).associateBy { it.id }
-                val rows = listOf(SupportedExportHeaders) + transactions.map { transaction ->
-                    transaction.toExportRow(
-                        cashbook = cashbook,
-                        category = transaction.categoryId?.let(categoryById::get),
-                    )
+                withContext(Dispatchers.IO) {
+                    val cashbook = cashbookRepository.getSelectedCashbook()
+                        ?: error("No cashbook to export.")
+                    val transactions = transactionRepository.observeTransactions(cashbook.id).first()
+                    val expenseCategories = categoryRepository.getCategoriesByType(cashbook.id, TransactionType.Expense)
+                    val incomeCategories = categoryRepository.getCategoriesByType(cashbook.id, TransactionType.Income)
+                    val categoryById = (expenseCategories + incomeCategories).associateBy { it.id }
+                    val rows = listOf(SupportedExportHeaders) + transactions.map { transaction ->
+                        transaction.toExportRow(
+                            cashbook = cashbook,
+                            category = transaction.categoryId?.let(categoryById::get),
+                        )
+                    }
+                    context.contentResolver.openOutputStream(uri)?.use { output ->
+                        output.write(LegacyMoneyManagerCsvWriter.write(rows).toByteArray(StandardCharsets.UTF_8))
+                    } ?: error("Unable to open export destination.")
+                    transactions.size
                 }
-                context.contentResolver.openOutputStream(uri)?.use { output ->
-                    output.write(LegacyMoneyManagerCsvWriter.write(rows).toByteArray(StandardCharsets.UTF_8))
-                } ?: error("Unable to open export destination.")
-                transactions.size
             }
 
             _uiState.update { state ->
@@ -441,6 +517,7 @@ class SettingsViewModel @Inject constructor(
         }
 
         val now = Instant.now()
+        val newCategories = mutableListOf<Category>()
         val transactions = records.map { record ->
             val category = categoriesByKey.getOrPut(record.type to record.categoryName.lowercase()) {
                 Category(
@@ -448,12 +525,12 @@ class SettingsViewModel @Inject constructor(
                     cashbookId = cashbookId,
                     name = record.categoryName,
                     type = record.type,
-                    icon = defaultIconFor(record.categoryName, record.type),
+                    icon = suggestedCategoryIconName(record.categoryName),
                     color = "#64748B",
                     sortOrder = categoriesByKey.size,
                     createdAt = now,
                     updatedAt = now,
-                ).also { categoryRepository.upsertCategory(it) }
+                ).also { newCategories += it }
             }
             Transaction(
                 id = "transaction_import_${UUID.randomUUID()}",
@@ -470,6 +547,9 @@ class SettingsViewModel @Inject constructor(
                 updatedAt = now,
             )
         }
+        if (newCategories.isNotEmpty()) {
+            categoryRepository.upsertCategories(newCategories)
+        }
         transactionRepository.upsertTransactions(transactions)
         return transactions.size
     }
@@ -484,6 +564,24 @@ class SettingsViewModel @Inject constructor(
         }
         return rawMessage.ifBlank {
             "Import preview failed. Please check that the file is a valid CSV or XLSX export."
+        }
+    }
+
+    private fun Throwable.toGoogleDriveSignInMessage(): String {
+        val apiException = this as? ApiException ?: return localizedMessage
+            ?: "Google Drive sign-in failed."
+
+        return when (apiException.statusCode) {
+            GoogleSignInStatusCodes.SIGN_IN_CANCELLED, CommonStatusCodes.CANCELED ->
+                "Google Drive sign-in was cancelled."
+            CommonStatusCodes.NETWORK_ERROR ->
+                "Google Drive sign-in failed. Check your internet connection and try again."
+            CommonStatusCodes.DEVELOPER_ERROR ->
+                "Google Drive sign-in is not configured for this app. Check the Google OAuth Android client for package com.budgettracker and this phone build's SHA-1."
+            GoogleSignInStatusCodes.SIGN_IN_FAILED ->
+                "Google Drive sign-in failed. Make sure this Google account is allowed in the OAuth consent screen test users."
+            else ->
+                "Google Drive sign-in failed (${apiException.statusCode}): ${apiException.statusMessage ?: "Unknown error"}"
         }
     }
 
@@ -507,7 +605,7 @@ class SettingsViewModel @Inject constructor(
 
     private fun Transaction.toExportRow(cashbook: Cashbook, category: Category?): List<String> =
         listOf(
-            category?.name.orEmpty(),
+            category?.name ?: UncategorizedCategoryName,
             note.orEmpty(),
             AmountFormatter.formatPlain(amount),
             amount.currency.name,
@@ -516,20 +614,6 @@ class SettingsViewModel @Inject constructor(
             dateTime.atZone(ZoneId.systemDefault()).toLocalDate().format(ExportDateFormatter),
             "",
         )
-
-    private fun defaultIconFor(categoryName: String, type: TransactionType): String {
-        val normalized = categoryName.lowercase()
-        return when {
-            type == TransactionType.Income -> "payments"
-            "food" in normalized -> "restaurant"
-            "transport" in normalized || "car" in normalized -> "directions_car"
-            "petrol" in normalized || "打油" in normalized -> "local_gas_station"
-            "doctor" in normalized -> "medical_services"
-            "shop" in normalized -> "shopping_bag"
-            "rent" in normalized -> "home"
-            else -> "category"
-        }
-    }
 
     private companion object {
         val SupportedExportHeaders = listOf(
@@ -542,6 +626,7 @@ class SettingsViewModel @Inject constructor(
             "Date",
             "Photos",
         )
+        const val UncategorizedCategoryName = "Uncategorized"
         val ExportDateFormatter: DateTimeFormatter =
             DateTimeFormatter.ofPattern("MMM d, yyyy", Locale.ENGLISH)
     }
@@ -577,6 +662,15 @@ data class SettingsUiState(
     val isBusy: Boolean = false,
     val message: String? = null,
     val importPreview: ImportPreviewUiState? = null,
+    val categoryDeletePrompt: CategoryDeletePrompt? = null,
+)
+
+data class CategoryDeletePrompt(
+    val categoryId: String,
+    val categoryName: String,
+    val categoryType: TransactionType,
+    val transactionCount: Int,
+    val recurringCount: Int,
 )
 
 data class CashbookUiState(

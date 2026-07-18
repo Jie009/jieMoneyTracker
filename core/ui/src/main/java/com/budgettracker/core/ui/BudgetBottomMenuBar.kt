@@ -17,7 +17,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -61,9 +61,9 @@ fun BudgetBottomMenuBar(
                 .coerceAtLeast(0)
             val itemWidth = maxWidth / BottomMenuItems.size
             val indicatorOffset = animateDpAsState(
-                targetValue = itemWidth * selectedIndex + (itemWidth - SelectedIndicatorSize) / 2,
+                targetValue = itemWidth * selectedIndex + (itemWidth - SelectedIndicatorWidth) / 2,
                 animationSpec = tween(
-                    durationMillis = 320,
+                    durationMillis = 180,
                     easing = FastOutSlowInEasing,
                 ),
                 label = "bottom-menu-indicator",
@@ -71,9 +71,11 @@ fun BudgetBottomMenuBar(
 
             Box(
                 modifier = Modifier
-                    .offset(x = indicatorOffset.value, y = 0.dp)
-                    .size(SelectedIndicatorSize)
-                    .clip(CircleShape)
+                    .offset(x = indicatorOffset.value, y = SelectedIndicatorTopOffset)
+                    .width(SelectedIndicatorWidth)
+                    .height(SelectedIndicatorHeight)
+                    .clip(RoundedCornerShape(22.dp))
+                    .border(1.dp, BottomMenuSelectedStroke, RoundedCornerShape(22.dp))
                     .background(BottomMenuSelectedPanel),
             )
 
@@ -111,24 +113,17 @@ private fun BottomMenuItem(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        Box(
-            modifier = Modifier
-                .size(42.dp)
-                .clip(CircleShape),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = label,
-                tint = Color.White.copy(alpha = if (selected) 1f else 0.7f),
-                modifier = Modifier.size(if (selected) 22.dp else 20.dp),
-            )
-        }
+        Icon(
+            imageVector = icon,
+            contentDescription = label,
+            tint = if (selected) Color.White else Color.White.copy(alpha = 0.58f),
+            modifier = Modifier.size(21.dp),
+        )
         Text(
             text = label,
-            color = Color.White.copy(alpha = if (selected) 1f else 0.65f),
+            color = Color.White.copy(alpha = if (selected) 1f else 0.58f),
             fontSize = 11.sp,
-            fontWeight = FontWeight.Bold,
+            fontWeight = if (selected) FontWeight.Black else FontWeight.Bold,
         )
     }
 }
@@ -145,7 +140,10 @@ private val BottomMenuItems = listOf(
     BottomMenuItemSpec(BottomMenuDestination.Charts, "Analytics", Icons.Filled.PieChart),
 )
 
-private val SelectedIndicatorSize = 42.dp
+private val SelectedIndicatorWidth = 86.dp
+private val SelectedIndicatorHeight = 46.dp
+private val SelectedIndicatorTopOffset = 10.dp
 private val BottomMenuPanel = Color(0xFF101B37)
-private val BottomMenuSelectedPanel = Color(0xFF1C4E8B)
+private val BottomMenuSelectedPanel = Color(0x663B82F6)
+private val BottomMenuSelectedStroke = Color(0x665EA9FF)
 private val BottomMenuStroke = Color(0xFF243659)
